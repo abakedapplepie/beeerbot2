@@ -9,6 +9,10 @@ import base64
 import requests
 import aiohttp
 import datetime
+from sqlalchemy import create_engine
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import scoped_session, sessionmaker
+from sqlalchemy.schema import MetaData
 
 import logging
 import discord
@@ -27,7 +31,7 @@ beeeeer
 """
 
 initial_extensions = {
-    'cogs.comic'
+    'cogs.comic', 'cogs.factoids', 'cogs.lenny'
 }
 
 
@@ -36,9 +40,8 @@ def _prefix_callable(bot, msg):
     base = [f'<@!{user_id}> ', f'<@{user_id} ']
     if msg.guild is None:
         base.append('!')
-        base.append('?')
     else:
-        base.extend(bot.prefixes.get(msg.guild.id, ['?', '!']))
+        base.extend(bot.prefixes.get(msg.guild.id, ['!']))
     return base
 
 class beeerbot(commands.Bot):
@@ -62,6 +65,14 @@ class beeerbot(commands.Bot):
         self.spam_control = commands.CooldownMapping.from_cooldown(10, 12.0, commands.BucketType.user)
 
         self._auto_spam_count = Counter()
+
+        # setup db
+        db_path = 'sqlite:///cloudbot.db'
+        self.db_engine = create_engine(db_path)
+        self.db_factory = sessionmaker(bind=self.db_engine)
+        self.db_session = scoped_session(self.db_factory)
+        self.db_metadata = MetaData()
+        self.db_base = declarative_base(metadata=self.db_metadata, bind=self.db_engine)
 
         self.log = logging.getLogger("beeerbot")
         log.info("Bot initialized")
