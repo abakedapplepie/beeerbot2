@@ -127,7 +127,7 @@ class Duckhunt(commands.Cog):
                         description="{}{}{}".format(dtail, dbody, dnoise),
                         color=469033)
                     em.set_thumbnail(url="https://i.imgur.com/2cY8l5R.png")
-                    duck_message = channel.send(embed=em)
+                    duck_message = await channel.send(embed=em)
                     self.game_status[network][chan]['duck_message_id'] = duck_message.id
                     self.log.info("deploying duck to {}".format(channel.name))
                 # Leave this commented out for now. I haven't decided how to make ducks leave.
@@ -141,7 +141,6 @@ class Duckhunt(commands.Cog):
 
     @tasks.loop(seconds=300)
     async def save_status(self):
-        self.log.info("running save_status")
         for network in self.game_status:
             for chan, status in self.game_status[network].items():
                 active = bool(status['game_on'])
@@ -156,7 +155,7 @@ class Duckhunt(commands.Cog):
         self.db.commit()
 
 
-    def dbadd_entry(self, nick, guild_id, channel_id, shoot, friend):
+    def dbadd_entry(self, nick, channel_id, guild_id, shoot, friend):
         """Takes care of adding a new row to the database."""
         query = self.table.insert().values(
             network=guild_id,
@@ -168,7 +167,7 @@ class Duckhunt(commands.Cog):
         self.db.commit()
 
 
-    def dbupdate(self, nick, guild_id, channel_id, shoot, friend):
+    def dbupdate(self, nick, channel_id, guild_id, shoot, friend):
         """update a db row"""
         if shoot and not friend:
             query = self.table.update() \
@@ -199,14 +198,19 @@ class Duckhunt(commands.Cog):
 
     def set_ducktime(self, channel_id, guild_id):
         #TODO: move min and max duck times to config
+        #TODO: calling duck time sets times for ALL channels, not caller channel
         next_duck = random.randint(int(time()) + 480, int(time()) + 3600)
+        if int(channel_id) == 782794037831663639:
+            self.log.info("setting time for test channel")
+            next_duck = random.randint(int(time()) + 10, int(time()) + 20)
+
         self.game_status[guild_id][channel_id]['next_duck_time'] = next_duck
         # self.game_status[conn][chan]['flyaway'] = self.game_status[ctx.guild.id][chan]['next_duck_time'] + 600
         self.game_status[guild_id][channel_id]['duck_status'] = 0
         # let's also reset the number of messages said and the list of masks that have spoken.
         self.game_status[guild_id][channel_id]['messages'] = 0
         self.game_status[guild_id][channel_id]['masks'] = []
-        self.log.info("ducktime of {} set for {} {}".format((next_duck-int(time()), guild_id, channel_id))
+        self.log.info("ducktime of {} set for {} {}".format(next_duck-int(time()), guild_id, channel_id))
         return
 
 
@@ -354,12 +358,14 @@ class Duckhunt(commands.Cog):
             score = self.db.execute(select([self.table.c.shot]) \
                             .where(self.table.c.network == ctx.guild.id) \
                             .where(self.table.c.chan == ctx.channel.id) \
-                            .where(self.table.c.name == ctx.author.id)).fetchone()
+                            .where(self.table.c.name == ctx.author.name)).fetchone()
             if score:
+                self.log.info("score present")
                 score = score[0]
                 score += 1
                 self.dbupdate(ctx.author.name, ctx.channel.id, ctx.guild.id, score, 0)
             else:
+                self.log.info("new player scored")
                 score = 1
                 self.dbadd_entry(ctx.author.name, ctx.channel.id, ctx.guild.id, score, 0)
 
@@ -377,8 +383,8 @@ class Duckhunt(commands.Cog):
             em.set_thumbnail(url="https://i.imgur.com/0Eyajax.png")
             em.set_footer(text="{} pulled the trigger".format(ctx.author.name))
             
-            duck_message = ctx.channel.fetch_message(self.game_status[network][chan]['duck_message_id'])
-            duck_message.edit(embed=em)
+            duck_message = await ctx.channel.fetch_message(self.game_status[ctx.guild.id][ctx.channel.id]['duck_message_id'])
+            await duck_message.edit(embed=em)
             self.set_ducktime(ctx.channel.id, ctx.guild.id)
 
     @commands.command(aliases=["bef"])
@@ -449,8 +455,8 @@ class Duckhunt(commands.Cog):
             em.set_thumbnail(url="https://i.imgur.com/XF11gK4.png")
             em.set_footer(text="{} really likes ducks".format(ctx.author.name))
             
-            duck_message = ctx.channel.fetch_message(self.game_status[network][chan]['duck_message_id'])
-            duck_message.edit(embed=em)
+            duck_message = awaitctx.channel.fetch_message(self.game_status[ctx.guild.id][ctx.channel.id]['duck_message_id'])
+            await duck_message.edit(embed=em)
             self.set_ducktime(ctx.channel.id, ctx.guild.id)
 
 
