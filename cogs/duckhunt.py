@@ -15,8 +15,8 @@ from sqlalchemy.sql import select
 """
 self.game_status structure 
 { 
-    'network':{
-        '#chan1':{
+    'guild.id':{
+        'channel.id':{
             'duck_status':0|1|2, 
             'next_duck_time':'integer', 
             'game_on':0|1,
@@ -24,7 +24,8 @@ self.game_status structure
             'duck_time': 'float', 
             'shoot_time': 'float',
             'messages': integer,
-            'masks' : list
+            'masks': list,
+            'duck_message_id' : int
         }
     }
 }
@@ -93,8 +94,8 @@ class Duckhunt(commands.Cog):
             status["no_duck_kick"] = int(row['duck_kick'])
             self.set_ducktime(chan, net)
 
-        #TODO: set up interval to check self.deploy_duck(). every minute?
-        #TODO: set up interval to self.save_status()
+        self.deploy_duck.start()
+        self.save_status.start()
 
         self.log.info("Duckhunt initialized")
 
@@ -102,11 +103,11 @@ class Duckhunt(commands.Cog):
         return
 
     def cog_unload(self):
-        self.save_status()
         self.save_status.cancel()
         self.deploy_duck.cancel()
+        
 
-    @tasks.loop(seconds=15.0)
+    @tasks.loop(seconds=60.0)
     async def deploy_duck(self):
         for network in self.game_status:
             for chan in self.game_status[network]:
@@ -140,6 +141,7 @@ class Duckhunt(commands.Cog):
 
     @tasks.loop(seconds=300)
     async def save_status(self):
+        self.log.info("running save_status")
         for network in self.game_status:
             for chan, status in self.game_status[network].items():
                 active = bool(status['game_on'])
@@ -196,6 +198,7 @@ class Duckhunt(commands.Cog):
 
 
     def set_ducktime(self, channel_id, guild_id):
+        #TODO: move min and max duck times to config
         next_duck = random.randint(int(time()) + 480, int(time()) + 3600)
         self.game_status[guild_id][channel_id]['next_duck_time'] = next_duck
         # self.game_status[conn][chan]['flyaway'] = self.game_status[ctx.guild.id][chan]['next_duck_time'] + 600
@@ -203,6 +206,7 @@ class Duckhunt(commands.Cog):
         # let's also reset the number of messages said and the list of masks that have spoken.
         self.game_status[guild_id][channel_id]['messages'] = 0
         self.game_status[guild_id][channel_id]['masks'] = []
+        self.log.info("ducktime of {} set for {} {}".format((next_duck-int(time()), guild_id, channel_id))
         return
 
 
@@ -247,6 +251,7 @@ class Duckhunt(commands.Cog):
         if self.game_status[msg.guild.id][msg.channel.id]['game_on'] == 1 and self.game_status[msg.guild.id][msg.channel.id]['duck_status'] == 0:
             self.game_status[msg.guild.id][msg.channel.id]['messages'] += 1
             if msg.author.id not in self.game_status[msg.guild.id][msg.channel.id]['masks']:
+                self.log.info("incrementMsgCounter added a new mask")
                 self.game_status[msg.guild.id][msg.channel.id]['masks'].append(msg.author.id)
 
 
@@ -370,6 +375,7 @@ class Duckhunt(commands.Cog):
                 description="rest in peace little ducky",
                 color=996666)
             em.set_thumbnail(url="https://i.imgur.com/0Eyajax.png")
+            em.set_footer(text="{} pulled the trigger".format(ctx.author.name))
             
             duck_message = ctx.channel.fetch_message(self.game_status[network][chan]['duck_message_id'])
             duck_message.edit(embed=em)
@@ -434,14 +440,14 @@ class Duckhunt(commands.Cog):
             timer = "{:.3f}".format(shoot - deploy)
             # https://i.imgur.com/XF11gK4.png
             await ctx.send(
-                "{} you befriended a duck in {} seconds! You have made friends with {} {} in {}.".format(ctx.author.name, timer, score,
-                                                                                                        duck, ctx.channel.name))
+                "{} you befriended a duck in {} seconds! You have made friends with {} {} in {}.".format(ctx.author.name, timer, score, duck, ctx.channel.name))
                                                                                                         
             em = discord.Embed(
                 title="this duck has been befriended",
                 description="fly on little ducky",
                 color=996666)
             em.set_thumbnail(url="https://i.imgur.com/XF11gK4.png")
+            em.set_footer(text="{} really likes ducks".format(ctx.author.name))
             
             duck_message = ctx.channel.fetch_message(self.game_status[network][chan]['duck_message_id'])
             duck_message.edit(embed=em)
