@@ -4,7 +4,8 @@ from collections import defaultdict
 from time import time
 import logging
 import discord
-from discord.ext import commands
+from discord.ext import tasks, commands
+import DiscordUtils
 
 from sqlalchemy import Table, Column, String, Integer, PrimaryKeyConstraint, desc, Boolean
 from sqlalchemy.sql import select
@@ -28,7 +29,7 @@ self.game_status structure
     }
 }
 """
-
+#TODO: stats are not correctly notifying when no results (friends/killers)
 
 class Duckhunt(commands.Cog):
     def __init__(self, bot: commands.Bot):
@@ -100,8 +101,13 @@ class Duckhunt(commands.Cog):
     async def cog_command_error(self, ctx, error):
         return
 
+    def cog_unload(self):
+        self.save_status()
+        self.save_status.cancel()
+        self.deploy_duck.cancel()
 
-    def deploy_duck(self):
+    @tasks.loop(seconds=15.0)
+    async def deploy_duck(self):
         for network in self.game_status:
             for chan in self.game_status[network]:
                 active = self.game_status[network][chan]['game_on']
@@ -114,9 +120,14 @@ class Duckhunt(commands.Cog):
                     self.game_status[network][chan]['duck_status'] = 1
                     self.game_status[network][chan]['duck_time'] = time()
                     dtail, dbody, dnoise = self.generate_duck()
-                    # conn.message(chan, "{}{}{}".format(dtail, dbody, dnoise))
                     channel = self.bot.get_channel(chan)
-                    self.bot.send_message(channel, "{}{}{}".format(dtail, dbody, dnoise))
+                    em = discord.Embed(
+                        title="a duck has appeared",
+                        description="{}{}{}".format(dtail, dbody, dnoise),
+                        color=469033)
+                    em.set_thumbnail(url="https://i.imgur.com/2cY8l5R.png")
+                    duck_message = channel.send(embed=em)
+                    self.game_status[network][chan]['duck_message_id'] = duck_message.id
                     self.log.info("deploying duck to {}".format(channel.name))
                 # Leave this commented out for now. I haven't decided how to make ducks leave.
                 # if active == 1 and duck_status == 1 and self.game_status[network][chan]['flyaway'] <= int(time()):
@@ -127,9 +138,8 @@ class Duckhunt(commands.Cog):
             continue
 
 
-    # @hook.on_unload
-    # @hook.periodic(5 * 60, initial_interval=10 * 60)
-    def save_status(self):
+    @tasks.loop(seconds=300)
+    async def save_status(self):
         for network in self.game_status:
             for chan, status in self.game_status[network].items():
                 active = bool(status['game_on'])
@@ -156,7 +166,7 @@ class Duckhunt(commands.Cog):
         self.db.commit()
 
 
-    def dbadd_entry(self, nick, guild_id, channel_id, shoot, friend):
+    def dbupdate(self, nick, guild_id, channel_id, shoot, friend):
         """update a db row"""
         if shoot and not friend:
             query = self.table.update() \
@@ -350,10 +360,22 @@ class Duckhunt(commands.Cog):
 
             timer = "{:.3f}".format(shoot - deploy)
             duck = "duck" if score == 1 else "ducks"
+            # https://i.imgur.com/0Eyajax.png
+
             await ctx.send("{} you shot a duck in {} seconds! You have killed {} {} in {}.".format(ctx.author.name, timer, score, duck, ctx.channel.name))
+
+
+            em = discord.Embed(
+                title="this duck has been murdered",
+                description="rest in peace little ducky",
+                color=996666)
+            em.set_thumbnail(url="https://i.imgur.com/0Eyajax.png")
+            
+            duck_message = ctx.channel.fetch_message(self.game_status[network][chan]['duck_message_id'])
+            duck_message.edit(embed=em)
             self.set_ducktime(ctx.channel.id, ctx.guild.id)
 
-    @commands.command()
+    @commands.command(aliases=["bef"])
     # @hook.command("befriend", autohelp=False)
     async def befriend(self, ctx):
         """when there is a duck on the loose use this command to befriend it before someone else shoots it."""
@@ -410,9 +432,19 @@ class Duckhunt(commands.Cog):
                 self.dbadd_entry(ctx.author.name, ctx.channel.id, ctx.guild.id, 0, score)
             duck = "duck" if score == 1 else "ducks"
             timer = "{:.3f}".format(shoot - deploy)
+            # https://i.imgur.com/XF11gK4.png
             await ctx.send(
                 "{} you befriended a duck in {} seconds! You have made friends with {} {} in {}.".format(ctx.author.name, timer, score,
                                                                                                         duck, ctx.channel.name))
+                                                                                                        
+            em = discord.Embed(
+                title="this duck has been befriended",
+                description="fly on little ducky",
+                color=996666)
+            em.set_thumbnail(url="https://i.imgur.com/XF11gK4.png")
+            
+            duck_message = ctx.channel.fetch_message(self.game_status[network][chan]['duck_message_id'])
+            duck_message.edit(embed=em)
             self.set_ducktime(ctx.channel.id, ctx.guild.id)
 
 
@@ -465,11 +497,63 @@ class Duckhunt(commands.Cog):
             else:
                 return await ctx.send("it appears no on has friended any ducks yet.")
 
-        topfriends = sorted(friends.items(), key=operator.itemgetter(1), reverse=True)
-        out += ' • '.join(["{}: {}".format('\x02' + k[:1] + u'\u200b' + k[1:] + '\x02', str(v)) for k, v in topfriends])
-        self.log.info(out)
-        out = self.smart_truncate(out)
-        return await ctx.send(out)
+        try: 
+            paginator = DiscordUtils.Pagination.AutoEmbedPaginator(ctx, auto_footer=True, remove_reactions=True, timeout=60)
+            topfriends = sorted(friends.items(), key=operator.itemgetter(1), reverse=True)
+
+            count = len(topfriends)
+            pages = []
+            page_no = 0
+            i = 1
+
+            while count > 0:
+                field1=topfriends[:10]
+                field1value = ""
+                field2value = ""
+                for k, v in field1:
+                    if i % 10 == int(0):
+                        newline = ""
+                    else:
+                        newline = "\n"
+                    field1value += "{}. {}: {}{}".format(str(i), k, str(v), newline)
+                    i += 1
+                rank_1_1 = ((page_no*2)*10)+1
+                rank_1_2 = ((page_no*2)+1)*10
+                field1title="{} - {}".format(rank_1_1, rank_1_2)
+                del topfriends[:10]
+                count -= 10
+                if count > 10:
+                    field2=topfriends[:10]
+                    rank_2_1 = rank_1_1+10
+                    rank_2_2 = rank_1_2+10
+                    del topfriends[:10]
+                elif count > 0:
+                    remaining = len(topfriends)
+                    field2=topfriends[:]
+                    rank_2_1 = rank_1_1+10
+                    rank_2_2 = rank_1_2+remaining
+                    del topfriends
+                
+                for k, v in field2:
+                    if i % 10 == int(0):
+                        newline = ""
+                    else:
+                        newline = "\n"
+                    field2value += "{}. {}: {}{}".format(str(i), k, str(v), newline)
+                    i += 1
+                field2title="{} - {}".format(rank_2_1, rank_2_2)
+
+                page = discord.Embed(title="duck friends scoreboard",description=out, color=356839) \
+                            .add_field(name=field1title, value=field1value) \
+                            .add_field(name=field2title, value=field2value)
+                page.set_footer(text="Use the emojis to change pages")
+
+                pages.append(page)
+                count -= 10
+                page_no += 1
+            return await paginator.run(pages)
+        except:
+            self.log.error('Failed to paginate', exc_info=1)
 
 
     @commands.command()
@@ -485,7 +569,7 @@ class Duckhunt(commands.Cog):
         chancount = defaultdict(int)
         out = ""
         if text.lower() == 'global' or text.lower() == 'average':
-            out = "Duck killer scores across the network: "
+            out = "Duck killer scores across the server: "
             scores = self.db.execute(select([self.table.c.name, self.table.c.shot]) \
                                 .where(self.table.c.network == ctx.guild.id) \
                                 .order_by(desc(self.table.c.shot)))
@@ -513,12 +597,63 @@ class Duckhunt(commands.Cog):
                     killers[row[0]] += row[1]
             else:
                 return await ctx.send("it appears no on has killed any ducks yet.")
+        try: 
+            paginator = DiscordUtils.Pagination.AutoEmbedPaginator(ctx, auto_footer=True, remove_reactions=True, timeout=60)
+            topkillers = sorted(killers.items(), key=operator.itemgetter(1), reverse=True)
 
-        topkillers = sorted(killers.items(), key=operator.itemgetter(1), reverse=True)
-        out += ' • '.join(["{}: {}".format('\x02' + k[:1] + u'\u200b' + k[1:] + '\x02', str(v)) for k, v in topkillers])
-        self.log.info(out)
-        out = self.smart_truncate(out)
-        return await ctx.send(out)
+            count = len(topkillers)
+            pages = []
+            page_no = 0
+            i = 1
+
+            while count > 0:
+                field1=topkillers[:10]
+                field1value = ""
+                field2value = ""
+                for k, v in field1:
+                    if i % 10 == int(0):
+                        newline = ""
+                    else:
+                        newline = "\n"
+                    field1value += "{}. {}: {}{}".format(str(i), k, str(v), newline)
+                    i += 1
+                rank_1_1 = ((page_no*2)*10)+1
+                rank_1_2 = ((page_no*2)+1)*10
+                field1title="{} - {}".format(rank_1_1, rank_1_2)
+                del topkillers[:10]
+                count -= 10
+                if count > 10:
+                    field2=topkillers[:10]
+                    rank_2_1 = rank_1_1+10
+                    rank_2_2 = rank_1_2+10
+                    del topkillers[:10]
+                elif count > 0:
+                    remaining = len(topkillers)
+                    field2=topkillers[:]
+                    rank_2_1 = rank_1_1+10
+                    rank_2_2 = rank_1_2+remaining
+                    del topkillers
+                
+                for k, v in field2:
+                    if i % 10 == int(0):
+                        newline = ""
+                    else:
+                        newline = "\n"
+                    field2value += "{}. {}: {}{}".format(str(i), k, str(v), newline)
+                    i += 1
+                field2title="{} - {}".format(rank_2_1, rank_2_2)
+
+                page = discord.Embed(title="duck illers scoreboard",description=out, color=356839) \
+                            .add_field(name=field1title, value=field1value) \
+                            .add_field(name=field2title, value=field2value)
+                page.set_footer(text="Use the emojis to change pages")
+
+                pages.append(page)
+                count -= 10
+                page_no += 1
+            return await paginator.run(pages)
+        except:
+            self.log.error('Failed to paginate', exc_info=1)
 
 
 
