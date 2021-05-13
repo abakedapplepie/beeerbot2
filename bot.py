@@ -23,6 +23,7 @@ from munch import munchify
 
 from cogs.utils import context
 from cogs.utils.config import Config
+from util import database
 
 log = logging.getLogger("beeerbot")
 
@@ -67,12 +68,9 @@ class beeerbot(commands.Bot):
         self._auto_spam_count = Counter()
 
         # setup db
-        db_path = 'sqlite:///cloudbot.db'
-        self.db_engine = create_engine(db_path)
-        self.db_factory = sessionmaker(bind=self.db_engine)
-        self.db_session = scoped_session(self.db_factory)
-        self.db_metadata = MetaData()
-        self.db_base = declarative_base(metadata=self.db_metadata, bind=self.db_engine)
+        db_path = self.config.bot_options.get('database', 'sqlite:///cloudbot.db')
+        self.db_engine = create_engine(db_path, future=True)
+        database.configure(self.db_engine, future=True)
 
         self.log = logging.getLogger("beeerbot")
         log.info("Bot initialized")
