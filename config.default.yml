@@ -1,0 +1,59 @@
+discord:
+  token:
+  secret:
+  public_key:
+  application_id:
+
+api_keys:
+  tvdb:
+  bing_azure:
+  wolframalpha:
+  lastfm_key:
+  lastfm_secret:
+  rottentomatoes:
+  soundcloud:
+  twitter_consumer_key:
+  twitter_consumer_secret:
+  twitter_access_token:
+  twitter_access_secret:
+  imgur_client_id:
+  imgur_client_secret:
+  spotify_client_id:
+  spotify_client_secret:
+  wunderground:
+  rdio_key:
+  rdio_secret:
+  google_dev_key:
+  google_cse_id:
+  octopart:
+  wordnik:
+  yandex_translate:
+  lyricsnmusic:
+  cleverbot:
+  brewerydb:
+  reddit_api_id:
+  reddit_api_secret:
+  giphy:
+
+bot_options:
+  data_files: beeerbot/data/
+  database: sqlite:///cloudbot.db
+
+comic_options:
+  background_file: beeerbot/backgrounds/cantillon.jpg
+  font_file: beeerbot/fonts/Calibri.ttf
+  char_files: beeerbot/chars/
+  font_size: 16
+  text_color:
+  buffer_size: 10
+  reddit_username:
+  reddit_password:
+  reddit_subreddit:
+  reddit_agent:
+  default_submission_title: INSERT TITLE HERE
+  dead_space: 150
+  total_characters: 8
+
+duckhunt_options:
+  min_users: 2
+  min_lines: 10
