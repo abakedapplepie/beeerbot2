@@ -38,6 +38,7 @@ api_keys:
 bot_options:
   data_files: beeerbot/data/
   database: sqlite:///cloudbot.db
+  factoid_char: '?'
 
 comic_options:
   background_file: beeerbot/backgrounds/cantillon.jpg
