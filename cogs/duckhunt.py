@@ -10,6 +10,10 @@ import DiscordUtils
 from sqlalchemy import Column, String, Boolean, Integer, insert, delete, select, update, desc
 from util import database
 
+from cogs.utils.formatting import get_text_list
+from cogs.utils import checks
+from cogs.utils.paginator import RoboPages, SimplePages, TextPageSource
+
 
 
 """
@@ -284,11 +288,11 @@ class Duckhunt(commands.Cog):
         if self.game_status[guild_id][channel_id]['game_on'] == 1 and self.game_status[guild_id][channel_id]['duck_status'] == 0:
             self.game_status[guild_id][channel_id]['messages'] += 1
             if author_id not in self.game_status[guild_id][channel_id]['masks']:
-                self.log.info("incrementMsgCounter added a new mask")
                 self.game_status[guild_id][channel_id]['masks'].append(author_id)
 
 
     @commands.command(aliases=["starthunt"])
+    @checks.is_mod()
     # @hook.command("starthunt", autohelp=False, permissions=["chanop", "op", "botcontrol"])
     async def start_hunt(self, ctx):
         """This command starts a duckhunt in your channel, to stop the hunt use .stophunt"""
@@ -319,6 +323,7 @@ class Duckhunt(commands.Cog):
 
 
     @commands.command(aliases=["stophunt"])
+    @checks.is_mod()
     async def stop_hunt(self, ctx):
         """This command stops the duck hunt in your channel. Scores will be preserved"""
         guild_id = str(getattr(ctx.guild, 'id', None))
@@ -344,6 +349,7 @@ class Duckhunt(commands.Cog):
 
 
     @commands.command(aliases=["duckmute"])
+    @checks.is_mod()
     async def no_duck_kick(self, ctx, text):
         """If the bot has OP or half-op in the channel you can specify .duckkick enable|disable so that people are kicked for shooting or befriending a non-existent goose. Default is off."""
         guild_id = str(getattr(ctx.guild, 'id', None))
@@ -444,14 +450,12 @@ class Duckhunt(commands.Cog):
                 self.table.chan == channel_id,
                 self.table.name == author_name
             )
-            score = self.db.execute(stmt).one()
+            score = self.db.execute(stmt).scalars().first()
             if score:
-                self.log.info("score present")
-                score = score[0]
+                score = score.shot
                 score += 1
                 self.dbupdate(author_name, channel_id, guild_id, score, 0)
             else:
-                self.log.info("new player scored")
                 score = 1
                 self.dbadd_entry(author_name, channel_id, guild_id, score, 0)
 
@@ -556,10 +560,10 @@ class Duckhunt(commands.Cog):
                 self.table.chan == channel_id,
                 self.table.name == author_name
             )
-            score = self.db.execute(stmt).one()
+            score = self.db.execute(stmt).scalars().first()
 
             if score:
-                score = score[0]
+                score = score.befriend
                 score += 1
                 self.dbupdate(author_name, channel_id, guild_id, 0, score)
             else:
@@ -836,6 +840,7 @@ class Duckhunt(commands.Cog):
 
 
     @commands.command()
+    @checks.is_mod()
     # @hook.command("duckmerge", permissions=["botcontrol"])
     async def duckmerge(self, ctx):
         """Moves the duck scores from one nick to another nick. Accepts two nicks as input the first will have their duck scores removed the second will have the first score added. Warning this cannot be undone."""
