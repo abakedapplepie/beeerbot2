@@ -58,3 +58,5 @@ comic_options:
 duckhunt_options:
   min_users: 2
   min_lines: 10
+  min_ducktime: 480
+  max_ducktime: 3600
