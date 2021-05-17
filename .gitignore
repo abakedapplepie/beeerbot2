@@ -1,3 +1,15 @@
+bin/
+lib/
+lib64/
+share/
+*.db
+config.yml
+lib64
+pyvenv.cfg
+etc/
+include/
+pip-*
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
