@@ -140,7 +140,17 @@ class Factoids(commands.Cog):
             return text[:width - 3].rstrip() + '...'
         return text
 
-    async def paste_facts(self, ctx, facts, *, width=80, heading=None, max_size=None, text=False):
+    async def paste_facts(
+        self,
+        ctx,
+        facts,
+        *,
+        width=80,
+        heading=None,
+        max_size=None,
+        text=False,
+        dm=True
+    ):
         if not facts:
             return
 
@@ -154,17 +164,22 @@ class Factoids(commands.Cog):
             entry = f'{name:<{max_width}} {fact[1]}'
             entries.append(self.shorten_text(entry, width))
 
+        if dm:
+            dm_channel = await ctx.author.create_dm()
+        else:
+            dm_channel = None
+
         if text:
             input_text = '\n'.join(entries)
             pages = RoboPages(TextPageSource(input_text, heading=heading))
             try:
-                await pages.start(ctx)
+                await pages.start(ctx, channel=dm_channel)
             except menus.MenuError as e:
                 await ctx.send(str(e))
         else:
             pages = SimplePages(entries=entries, per_page=25)
             try:
-                await pages.start(ctx)
+                await pages.start(ctx, channel=dm_channel)
             except menus.MenuError as e:
                 await ctx.send(str(e))
 
@@ -186,7 +201,7 @@ class Factoids(commands.Cog):
             )
 
         if found:
-            await self.paste_facts(ctx, found, heading="Removed facts:", text=True)
+            await self.paste_facts(ctx, found, heading="Removed facts:", text=True, dm=False)
             self.del_factoid(guild_id, list(found.keys()))
 
     @commands.command(aliases=["f"])
@@ -204,7 +219,7 @@ class Factoids(commands.Cog):
         return await ctx.send("Facts cleared.")
 
     @commands.command()
-    async def info(self, ctx, text):
+    async def factinfo(self, ctx, text):
         """<factoid> - shows the source of a factoid"""
         guild_id = str(getattr(ctx.guild, 'id', None))
         text = text.strip().lower()
@@ -260,7 +275,8 @@ class Factoids(commands.Cog):
 
         pages = SimplePages(entries=reply_text, per_page=25)
         try:
-            await pages.start(ctx)
+            dm = await ctx.author.create_dm()
+            await pages.start(ctx, channel=dm)
         except menus.MenuError as e:
             await ctx.send(str(e))
 
