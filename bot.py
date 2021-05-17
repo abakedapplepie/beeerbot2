@@ -32,7 +32,7 @@ beeeeer
 """
 
 initial_extensions = {
-    'cogs.comic', 'cogs.factoids', 'cogs.lenny'
+    'cogs.comic', 'cogs.factoids', 'cogs.lenny', 'cogs.duckhunt', 'cogs.cardsagainsthumanity'
 }
 
 
