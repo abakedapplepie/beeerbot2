@@ -67,6 +67,7 @@ class Duckhunt(commands.Cog):
         self.nohunt_table = NoHuntTable
 
         self.delete_source_msg = False
+        self.test_channel_id = int(782794037831663639)
         
         #Set up duck parts
         self.duck_tail = "・゜゜・。。・゜゜"
@@ -125,8 +126,14 @@ class Duckhunt(commands.Cog):
                     active == 1 and 
                     duck_status == 0 and 
                     next_duck <= time() and 
-                    chan_messages >= int(self.config.duckhunt_options.get('min_lines', 10)) and 
-                    len(chan_masks) >= int(self.config.duckhunt_options.get('min_users', 2)) 
+                    (
+                        chan_messages >= int(self.config.duckhunt_options.get('min_lines', 10)) or 
+                        int(chan) == self.test_channel_id # test channel override
+                    ) and 
+                    (
+                        len(chan_masks) >= int(self.config.duckhunt_options.get('min_users', 2)) or 
+                        int(chan) == self.test_channel_id # test channel override
+                    )
                     ):
                     # deploy a duck to channel
                     try:
@@ -232,7 +239,7 @@ class Duckhunt(commands.Cog):
     def set_ducktime(self, channel_id: str, guild_id: str):
         next_duck = random.randint(int(time()) + int(self.bot.config.duckhunt_options.get("min_time", 480)), 
                                    int(time()) + int(self.bot.config.duckhunt_options.get("max_time", 3600)))
-        if int(channel_id) == 782794037831663639:
+        if int(channel_id) == self.test_channel_id:
             next_duck = int(time()) + 10 # test channel override
 
         self.game_status[guild_id][channel_id]['next_duck_time'] = next_duck
