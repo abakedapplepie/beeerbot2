@@ -1,13 +1,20 @@
-import discord
-from discord.ext import commands
-import string
-from sqlalchemy import Column, String, insert, delete, select, update
 from collections import defaultdict
 import logging
-import re
+import string
+from typing import Dict, List
+
+from discord import utils
+from discord.ext import commands, menus
+from sqlalchemy import Column, String, insert, delete, select, update, and_
 
 from util import database
+from cogs.utils.formatting import get_text_list
+from cogs.utils import checks
+from cogs.utils.paginator import RoboPages, SimplePages, TextPageSource
 
+
+# below is the default factoid in every channel you can modify it however you like
+default_dict = {"beeerbot": "is the best"}
 
 class FactoidsTable(database.base):
     __tablename__ = "factoids"
@@ -22,44 +29,44 @@ class Factoids(commands.Cog):
         self.log = logging.getLogger("beeerbot")
         self.db = database.Session
         self.table = FactoidsTable
+        self.factoid_char = bot.config.bot_options.get('factoid_char', '?')
+        self.factoid_cache: Dict[str, Dict[str, str]] = defaultdict(default_dict.copy)
         self.load_cache()
         self.log.info("Factoids initialized")
 
     async def cog_command_error(self, ctx, error):
-        return
+        if isinstance(error, commands.BadArgument):
+            await ctx.send(error)
+        if isinstance(error, commands.TooManyArguments):
+            await ctx.send(f'You called the {ctx.command.name} command with too many arguments.')
 
     def load_cache(self):
-        """
-        :type db: sqlalchemy.orm.Session
-        """
-
-        self.factoid_cache = defaultdict(lambda: {"beeerbot": "is the best"})
-        stmt = select(self.table).order_by(self.table.word)
-        for row in self.db.execute(stmt).scalars().all():
+        new_cache = self.factoid_cache.copy()
+        new_cache.clear()
+        for row in self.db.execute(select(self.table)).scalars().all():
             # assign variables
             chan = row.chan
             word = row.word
             data = row.data
+            new_cache[chan][word] = data
 
-            if chan not in self.factoid_cache:
-                self.factoid_cache.update({chan:{word:data}})
-            elif word not in self.factoid_cache[chan]:
-                self.factoid_cache[chan].update({word:data})
-            else:
-                self.factoid_cache[chan][word] = data
+        self.factoid_cache.clear()
+        self.factoid_cache.update(new_cache)
 
     def add_factoid(self, word, chan, data, nick):
         """
-        :type db: sqlalchemy.orm.Session
         :type word: str
+        :type chan: str
         :type data: str
         :type nick: str
         """
-
         if word in self.factoid_cache[chan]:
             # if we have a set value, update
-            stmt = update(self.table).where(self.table.chan == chan, self.table.word == word).values(data=data, nick=nick, chan=chan)
-            self.db.execute(stmt)
+            self.db.execute(
+                update(self.table)
+                .where(self.table.chan == chan, self.table.word == word)
+                .values(data=data, nick=nick, chan=chan)
+            )
             self.db.commit()
         else:
             # otherwise, insert
@@ -67,12 +74,17 @@ class Factoids(commands.Cog):
             self.db.commit()
         self.load_cache()
 
-    def del_factoid(self, chan, word):
+    def del_factoid(self, chan, word=None):
         """
-        :type db: sqlalchemy.orm.Session
+        :type chan: str
         :type word: str
         """
-        self.db.execute(delete(self.table).where(self.table.chan == chan, self.table.word == word))
+        clause = self.table.chan == chan
+
+        if word is not None:
+            clause = and_(clause, self.table.word.in_(word))
+
+        self.db.execute(delete(self.table).where(clause))
         self.db.commit()
         self.load_cache()
 
@@ -83,7 +95,6 @@ class Factoids(commands.Cog):
         If the input starts with <act> the message will be sent as an action.
         If <user> in in the message it will be replaced by input arguments when command is called.
         """
-
         try:
             word = word.lower()
             data = str(" ".join(data))
@@ -91,65 +102,130 @@ class Factoids(commands.Cog):
             nick = str(getattr(ctx.author, 'name', None))
 
             try:
-                old_data = self.factoid_cache[guild_id].get(word)
-            except:
-                old_data = ""
-                pass
+                old_data = self.factoid_cache[guild_id][word]
+            except LookupError:
+                old_data = None
 
             if data.startswith('+') and old_data:
                 # remove + symbol
                 new_data = data[1:]
                 # append new_data to the old_data
-                if len(new_data) > 1 and new_data[1] in (string.punctuation + ' '):
+                puncts = string.punctuation + " "
+                if len(new_data) > 1 and new_data[1] in puncts:
                     data = old_data + new_data
                 else:
                     data = old_data + ' ' + new_data
-                await ctx.send("Appending **{}** to **{}**".format(new_data, old_data))
+                await ctx.send(f"Appending  **{new_data}** to **{old_data}**")
             else:
-                await ctx.send('Remembering **{0}** for *{1}*. Type `?{1}` to see it.'.format(data, word))
+                if not data:
+                    return await ctx.send("Cannot save empty facts.")
+                await ctx.send(
+                    f"Remembering **{data}** for *{word}*. Type `{self.factoid_char}{word}` to see it."
+                )
                 if old_data:
-                    await ctx.send('Previous data was **{}**'.format(old_data))
+                    await ctx.send(f"Previous data was **{old_data}**")
 
             self.add_factoid(word, guild_id, data, nick)
         except Exception as e:
+            await ctx.send("Error adding factoid!")
             self.log.error('Exception', exc_info=True)
         return
 
+    def get_max_size(self, facts):
+        as_lengths = (utils._string_width(self.factoid_char + fact[0]) for fact in sorted(facts.items()))
+        return max(as_lengths, default=0)
+
+    def shorten_text(self, text, width):
+        if len(text) > width:
+            return text[:width - 3].rstrip() + '...'
+        return text
+
+    async def paste_facts(self, ctx, facts, *, width=80, heading=None, max_size=None, text=False):
+        if not facts:
+            return
+
+        max_size = max_size or self.get_max_size(facts)
+        get_width = utils._string_width
+
+        entries = []
+        for fact in sorted(facts.items()):
+            name = self.factoid_char + fact[0]
+            max_width = max_size - (get_width(name) - len(name))
+            entry = f'{name:<{max_width}} {fact[1]}'
+            entries.append(self.shorten_text(entry, width))
+
+        if text:
+            input_text = '\n'.join(entries)
+            pages = RoboPages(TextPageSource(input_text, heading=heading))
+            try:
+                await pages.start(ctx)
+            except menus.MenuError as e:
+                await ctx.send(str(e))
+        else:
+            pages = SimplePages(entries=entries, per_page=25)
+            try:
+                await pages.start(ctx)
+            except menus.MenuError as e:
+                await ctx.send(str(e))
+
+    async def remove_fact(self, ctx, guild_id, names):
+        found = {}
+        missing = []
+        for name in names:
+            data = self.factoid_cache[guild_id].get(name.lower())
+            if data:
+                found[name] = data
+            else:
+                missing.append(name)
+
+        if missing:
+            return await ctx.send(
+                "Unknown factoids: {}".format(
+                    get_text_list([repr(s) for s in missing], "and")
+                )
+            )
+
+        if found:
+            await self.paste_facts(ctx, found, heading="Removed facts:", text=True)
+            self.del_factoid(guild_id, list(found.keys()))
 
     @commands.command(aliases=["f"])
-    async def forget(self, ctx, word) :
+    async def forget(self, ctx, *, word) :
         """<word> - forgets previously remembered <word>"""
         guild_id = str(getattr(ctx.guild, 'id', None))
-        data = self.factoid_cache[guild_id][word.lower()]
+        return await self.remove_fact(ctx, guild_id, word.split())
 
-        if data:
-            self.del_factoid(guild_id, word)
-            return await ctx.send('"{}" has been forgotten.'.format(data))
-        else:
-            return await ctx.send("I don't know about that.")
+    @commands.command(aliases=["forgetall", "clearfacts"])
+    @checks.is_mod()
+    async def forget_all(self, ctx):
+        guild_id = str(getattr(ctx.guild, 'id', None))
+        await self.paste_facts(ctx, self.factoid_cache[guild_id], width=500, heading="Removed facts:", text=True)
+        self.del_factoid(guild_id)
+        return await ctx.send("Facts cleared.")
 
     @commands.command()
     async def info(self, ctx, text):
         """<factoid> - shows the source of a factoid"""
-
         guild_id = str(getattr(ctx.guild, 'id', None))
         text = text.strip().lower()
+        query = select(self.table).where(self.table.chan == guild_id, self.table.word == text)
+        res = self.db.execute(query).scalars().all()
 
-        if text in self.factoid_cache[guild_id]:
-            return await ctx.send(self.factoid_cache[guild_id][text])
+        if res:
+            for row in res:
+                await ctx.send(f"Fact: `{row.word}`; Data: `{row.data}`; Person responsible: `{row.nick}`")
         else:
-            return await ctx.send("Unknown Factoid.")
+            await ctx.send("Unknown factoid.")
 
     @commands.Cog.listener('on_message')
     async def factoid(self, message):
         """<word> - shows what data is associated with <word>"""
-
         if message.author.bot:
             return
 
         guild_id = str(getattr(message.guild, 'id', None))
         content = message.content
-        if message.content[0] == '?':
+        if message.content[0] == self.factoid_char:
             content = message.content[1:]
             arg1 = ""
             if len(content.split()) >= 2:
@@ -162,34 +238,36 @@ class Factoids(commands.Cog):
                 result = self.factoid_cache[guild_id][factoid_text]
 
                 # factoid post-processors
-                # result = colors.parse(result)
                 if arg1:
                     result = result.replace("<user>", arg1)
                 if result.startswith("<act>"):
                     result = result[5:].strip()
-                    return await message.channel.send("*{}*".format(result))
+                    return await message.channel.send(f"*{result}*")
                 else:
                     return await message.channel.send(result)
         else:
             return
 
-    @commands.command()
+    @commands.command(aliases=['listfactoids'])
     async def listfacts(self, ctx):
         """- lists all available factoids"""
 
         guild_id = str(getattr(ctx.guild, 'id', None))
-        reply_text = []
+        reply_text: List[str] = []
         reply_text_length = 0
-        for word in self.factoid_cache[guild_id].keys():
-            added_length = len(word) + 2
-            if reply_text_length + added_length > 400:
-                await ctx.send(", ".join(reply_text))
-                reply_text = []
-                reply_text_length = 0
-            else:
-                reply_text.append(word)
-                reply_text_length += added_length
-        return await ctx.send(", ".join(reply_text))
+        for word in sorted(self.factoid_cache[guild_id].keys()):
+            reply_text.append(word)
+
+        pages = SimplePages(entries=reply_text, per_page=25)
+        try:
+            await pages.start(ctx)
+        except menus.MenuError as e:
+            await ctx.send(str(e))
+
+    @commands.command(aliases=['listdetailedfacts'])
+    async def listdetailedfactoids(self, ctx):
+        guild_id = str(getattr(ctx.guild, 'id', None))
+        return await self.paste_facts(ctx, self.factoid_cache[guild_id])
 
 def setup(bot):
     bot.add_cog(Factoids(bot))

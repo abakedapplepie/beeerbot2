@@ -1,3 +1,4 @@
+git+https://github.com/Rapptz/discord-ext-menus.git@309c70222eec33acacb8c21bbb0fbe9bc57de661
 aiohttp==3.7.4.post0
 async-timeout==3.0.1
 asyncpraw
