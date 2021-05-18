@@ -616,7 +616,7 @@ class Duckhunt(commands.Cog):
     @commands.command()
     # @hook.command("friends", autohelp=False)
     async def friends(self, ctx):
-        """Prints a list of the top duck friends in the channel, if 'global' is specified all channels in the database are included."""
+        """Prints a list of the top duck friends in the channel. If 'global' is specified all channels in the server are included. If 'average' is specified, returns average across all channels in the server."""
         guild_id = str(getattr(ctx.guild, 'id', None))
         channel_id = str(getattr(ctx.channel, 'id', None))
         channel_name = str(getattr(ctx.channel, 'name', None))
@@ -639,7 +639,7 @@ class Duckhunt(commands.Cog):
                     if row.befriend == 0:
                         continue
                     chancount[row.chan] += 1
-                    friends[row.chan] += row.befriend
+                    friends[row.name] += row.befriend
                 if text.lower() == 'average':
                     for k, v in friends.items():
                         friends[k] = int(v / chancount[k])
@@ -660,7 +660,7 @@ class Duckhunt(commands.Cog):
                 for row in scores:
                     if row.befriend == 0:
                         continue
-                    friends[row.chan] += row.befriend
+                    friends[row.name] += row.befriend
             else:
                 out = await ctx.send("it appears no on has friended any ducks yet.")
                 await out.delete(delay=20)
@@ -669,61 +669,17 @@ class Duckhunt(commands.Cog):
                 return
 
         try: 
-            paginator = DiscordUtils.Pagination.AutoEmbedPaginator(ctx, auto_footer=True, remove_reactions=True, timeout=60)
-            topfriends = sorted(friends.items(), key=operator.itemgetter(1), reverse=True)
 
-            count = len(topfriends)
-            pages = []
-            page_no = 0
-            i = 1
+            reply_text: List[str] = []
+            reply_text_length = 0
+            for k, v in sorted(friends.items(), key=operator.itemgetter(1), reverse=True):
+                reply_text.append(f"{k}: {v}")
 
-            while count > 0:
-                field1=topfriends[:10]
-                field1value = ""
-                field2value = ""
-                for k, v in field1:
-                    if i % 10 == int(0):
-                        newline = ""
-                    else:
-                        newline = "\n"
-                    field1value += f"{i}. {k}: {v}{newline}"
-                    i += 1
-                rank_1_1 = ((page_no*2)*10)+1
-                rank_1_2 = ((page_no*2)+1)*10
-                field1title=f"{rank_1_1} - {rank_1_2}"
-                del topfriends[:10]
-                count -= 10
-                if count > 10:
-                    field2=topfriends[:10]
-                    rank_2_1 = rank_1_1+10
-                    rank_2_2 = rank_1_2+10
-                    del topfriends[:10]
-                elif count > 0:
-                    remaining = len(topfriends)
-                    field2=topfriends[:]
-                    rank_2_1 = rank_1_1+10
-                    rank_2_2 = rank_1_2+remaining
-                    del topfriends
-                
-                for k, v in field2:
-                    if i % 10 == int(0):
-                        newline = ""
-                    else:
-                        newline = "\n"
-                    field2value += f"{i}. {k}: {v}{newline}"
-                    i += 1
-                field2title = f"{rank_2_1} - {rank_2_2}"
-
-                page = discord.Embed(title="duck friends scoreboard",description=out, color=356839) \
-                            .add_field(name=field1title, value=field1value) \
-                            .add_field(name=field2title, value=field2value)
-                page.set_footer(text="Use the emojis to change pages")
-
-                pages.append(page)
-                count -= 10
-                page_no += 1
-            out = await paginator.run(pages)
-            await out.delete(delay=300)
+            pages = SimplePages(entries=reply_text, per_page=15)
+            try:
+                await pages.start(ctx)
+            except menus.MenuError as e:
+                await ctx.send(str(e))
             if self.delete_source_msg:
                 await ctx.message.delete(delay=10)
             return
@@ -734,7 +690,7 @@ class Duckhunt(commands.Cog):
     @commands.command()
     # @hook.command("killers", autohelp=False)
     async def killers(self, ctx):
-        """Prints a list of the top duck killers in the channel, if 'global' is specified all channels in the database are included."""
+        """Prints a list of the top duck killers in the channel. If 'global' is specified all channels in the server are included. If 'average' is specified, returns average across all channels in the server."""
         guild_id = str(getattr(ctx.guild, 'id', None))
         channel_id = str(getattr(ctx.channel, 'id', None))
         channel_name = str(getattr(ctx.channel, 'name', None))
@@ -754,11 +710,11 @@ class Duckhunt(commands.Cog):
             ).order_by(desc(self.table.shot))
             scores = self.db.execute(stmt).scalars().all()
             if scores:
-                for row in scores:
+                for row in self.db.execute(stmt).scalars().all():
                     if row.shot == 0:
                         continue
                     chancount[row.chan] += 1
-                    killers[row.chan] += row.shot
+                    killers[row.name] += row.shot
                 if text.lower() == 'average':
                     for k, v in killers.items():
                         killers[k] = int(v / chancount[k])
@@ -779,72 +735,25 @@ class Duckhunt(commands.Cog):
                 for row in scores:
                     if row.shot == 0:
                         continue
-                    killers[row.chan] += row.shot
-                    self.log.info(f"adding: {row.chan} +{row.chan}")
+                    killers[row.name] += row.shot
             else:
-                self.log.info('scores unset')
                 out = await ctx.send("it appears no one has killed any ducks yet.")
                 await out.delete(delay=20)
                 if self.delete_source_msg:
                     await ctx.message.delete(delay=10)
                 return
-        try: 
-            paginator = DiscordUtils.Pagination.AutoEmbedPaginator(ctx, auto_footer=True, remove_reactions=True, timeout=60)
-            topkillers = sorted(killers.items(), key=operator.itemgetter(1), reverse=True)
+        try:
+            reply_text: List[str] = []
+            reply_text_length = 0
+            for k, v in sorted(killers.items(), key=operator.itemgetter(1), reverse=True):
+                reply_text.append(f"{k}: {v}")
 
-            count = len(topkillers)
-            pages = []
-            page_no = 0
-            i = 1
+            pages = SimplePages(entries=reply_text, per_page=15)
+            try:
+                await pages.start(ctx)
+            except menus.MenuError as e:
+                await ctx.send(str(e))
 
-            while count > 0:
-                self.log.info(f'count: {count}')
-                field1=topkillers[:10]
-                field1value = ""
-                field2value = ""
-                for k, v in field1:
-                    if i % 10 == int(0):
-                        newline = ""
-                    else:
-                        newline = "\n"
-                    field1value += f"{i}. {k}: {v}{newline}"
-                    i += 1
-                rank_1_1 = ((page_no*2)*10)+1
-                rank_1_2 = ((page_no*2)+1)*10
-                field1title=f"{rank_1_1} - {rank_1_2}"
-                del topkillers[:10]
-                count -= 10
-                if count > 10:
-                    field2=topkillers[:10]
-                    rank_2_1 = rank_1_1+10
-                    rank_2_2 = rank_1_2+10
-                    del topkillers[:10]
-                elif count > 0:
-                    remaining = len(topkillers)
-                    field2=topkillers[:]
-                    rank_2_1 = rank_1_1+10
-                    rank_2_2 = rank_1_2+remaining
-                    del topkillers
-                
-                for k, v in field2:
-                    if i % 10 == int(0):
-                        newline = ""
-                    else:
-                        newline = "\n"
-                    field2value += f"{i}. {k}: {v}{newline}"
-                    i += 1
-                field2title="{rank_2_1} - {rank_2_2}"
-
-                page = discord.Embed(title="duck killers scoreboard",description=out, color=356839) \
-                            .add_field(name=field1title, value=field1value) \
-                            .add_field(name=field2title, value=field2value)
-                page.set_footer(text="Use the emojis to change pages")
-
-                pages.append(page)
-                count -= 10
-                page_no += 1
-            out = await paginator.run(pages)
-            await out.delete(delay=300)
             if self.delete_source_msg:
                 await ctx.message.delete(delay=10)
             return
