@@ -2,7 +2,7 @@ from collections import defaultdict
 import logging
 import string
 from typing import Dict, List
-
+import discord
 from discord import utils
 from discord.ext import commands, menus
 from sqlalchemy import Column, String, insert, delete, select, update, and_
@@ -115,15 +115,16 @@ class Factoids(commands.Cog):
                     data = old_data + new_data
                 else:
                     data = old_data + ' ' + new_data
-                await ctx.send(f"Appending  **{new_data}** to **{old_data}**")
+                await ctx.send(allowed_mentions=discord.AllowedMentions.none(), content=f"Appending  **{new_data}** to **{old_data}**")
             else:
                 if not data:
                     return await ctx.send("Cannot save empty facts.")
                 await ctx.send(
-                    f"Remembering **{data}** for *{word}*. Type `{self.factoid_char}{word}` to see it."
+                    allowed_mentions=discord.AllowedMentions.none(), 
+                    content=f"Remembering **{data}** for *{word}*. Type `{self.factoid_char}{word}` to see it."
                 )
                 if old_data:
-                    await ctx.send(f"Previous data was **{old_data}**")
+                    await ctx.send(allowed_mentions=discord.AllowedMentions.none(), content=f"Previous data was **{old_data}**")
 
             self.add_factoid(word, guild_id, data, nick)
         except Exception as e:
@@ -213,7 +214,7 @@ class Factoids(commands.Cog):
 
         if res:
             for row in res:
-                await ctx.send(f"Fact: `{row.word}`; Data: `{row.data}`; Person responsible: `{row.nick}`")
+                await ctx.send(allowed_mentions=discord.AllowedMentions.none(), content=f"Fact: `{row.word}`; Data: `{row.data}`; Person responsible: `{row.nick}`")
         else:
             await ctx.send("Unknown factoid.")
 
@@ -224,28 +225,31 @@ class Factoids(commands.Cog):
             return
 
         guild_id = str(getattr(message.guild, 'id', None))
-        content = message.content
-        if message.content[0] == self.factoid_char:
-            content = message.content[1:]
-            arg1 = ""
-            if len(content.split()) >= 2:
-                arg1 = content.split()[1]
-            # split up the input
-            split = content.strip().split(" ")
-            factoid_text = split[0].lower()
+        content = str(getattr(message, 'content'))
+        if len(content) > 0:
+            if content[0] == self.factoid_char:
+                content = content[1:]
+                arg1 = ""
+                if len(content.split()) >= 2:
+                    arg1 = content.split()[1]
+                # split up the input
+                split = content.strip().split(" ")
+                factoid_text = split[0].lower()
 
-            if factoid_text in self.factoid_cache[guild_id]:
-                result = self.factoid_cache[guild_id][factoid_text]
+                if factoid_text in self.factoid_cache[guild_id]:
+                    result = self.factoid_cache[guild_id][factoid_text]
 
-                # factoid post-processors
-                if arg1:
-                    result = result.replace("<user>", arg1)
-                if result.startswith("<act>"):
-                    result = result[5:].strip()
-                    return await message.channel.send(f"*{result}*")
-                else:
-                    return await message.channel.send(result)
-        else:
+                    # factoid post-processors
+                    if arg1:
+                        result = result.replace("<user>", arg1)
+                    if result.startswith("<act>"):
+                        result = result[5:].strip()
+                        return await message.channel.send(allowed_mentions=discord.AllowedMentions.none(), content=f"*{result}*")
+                    else:
+                        return await message.channel.send(allowed_mentions=discord.AllowedMentions.none(), content=result)
+            else:
+                return
+        else: 
             return
 
     @commands.command(aliases=['listfactoids'])
