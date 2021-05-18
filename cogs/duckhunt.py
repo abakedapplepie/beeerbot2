@@ -462,7 +462,12 @@ class Duckhunt(commands.Cog):
                 self.dbadd_entry(author_name, channel_id, guild_id, score, 0)
 
             timer = f"{(shoot - deploy):.3f}"
-            duck = "duck" if score == 1 else "ducks"
+            if score == 1:
+                duck_stmt = f"all by itself"
+            else:
+                duck = "duck" if score == 2 else "ducks"
+                duck_stmt = f"next to {score-1} other {duck}"
+            
             # https://i.imgur.com/0Eyajax.png
 
             out = await ctx.send(f"{author_name} you shot a duck in {timer} seconds! You have killed {score} {duck} in {channel_name}.")
@@ -473,7 +478,7 @@ class Duckhunt(commands.Cog):
 
             duck_msg = await ctx.channel.fetch_message(self.game_status[guild_id][channel_id]['duck_msg_id'])
             duck_msg_content = duck_msg.embeds[0].description
-            description = f"{duck_msg_content}\n{author_name} pulled the trigger in {timer} seconds\nit's hanging on the wall next to {score} other {duck}"
+            description = f"{duck_msg_content}\n{author_name} pulled the trigger in {timer} seconds\nit's hanging on the wall {duck_stmt}"
 
             # old: https://i.imgur.com/0Eyajax.png https://i.imgur.com/C3SPWR1.png
             em = discord.Embed(
@@ -573,14 +578,18 @@ class Duckhunt(commands.Cog):
             else:
                 score = 1
                 self.dbadd_entry(author_name, channel_id, guild_id, 0, score)
-            duck = "duck" if score == 1 else "ducks"
+            if score == 1:
+                duck_stmt = f"all by itself"
+            else:
+                duck = "duck" if score == 2 else "ducks"
+                duck_stmt = f"with {score-1} other {duck}"
             timer = f"{(shoot - deploy):.3f}"
             # https://i.imgur.com/XF11gK4.png
             out = await ctx.send(f"{author_name} you befriended a duck in {timer} seconds! You have made friends with {score} {duck} in {channel_name}.")
 
             duck_msg = await ctx.channel.fetch_message(self.game_status[guild_id][channel_id]['duck_msg_id'])
             duck_msg_content = duck_msg.embeds[0].description
-            description = f"{duck_msg_content}\n{author_name} sexed the duck in {timer} seconds\nit's hanging out in a harem with {score} other {duck}"
+            description = f"{duck_msg_content}\n{author_name} sexed the duck in {timer} seconds\nit's hanging out in a harem {duck_stmt}"
 
             await out.delete(delay=30)
             if self.delete_source_msg:
