@@ -6,7 +6,7 @@ import operator
 import random
 from threading import Lock
 from time import sleep, time
-from typing import Dict, List, NamedTuple, TypeVar
+from typing import Dict, List, NamedTuple, TypeVar, Union
 
 import discord
 from discord.ext import tasks, commands
@@ -443,7 +443,7 @@ class Duckhunt(commands.Cog):
                 and_(
                     self.table.network == guild_id,
                     self.table.chan == channel_id,
-                    self.table.name == nick.lower(),
+                    self.table.name == nick,
                 )
             )
             .values(**values)
@@ -457,7 +457,7 @@ class Duckhunt(commands.Cog):
             select([self.table.shot, self.table.befriend])
             .where(self.table.network == guild_id)
             .where(self.table.chan == channel_id)
-            .where(self.table.name == nick.lower())
+            .where(self.table.name == nick)
         ).fetchone()
 
         if score:
@@ -550,7 +550,7 @@ class Duckhunt(commands.Cog):
         status.duck_status = 2
         try:
             args = {attack_type: 1}
-            score = self.update_score(nick, channel_id, guild_id, **args)[attack_type]
+            score = self.update_score(nick.lower(), channel_id, guild_id, **args)[attack_type]
         except Exception as e:
             status.duck_status = 1
             out = "An unknown error has occurred."
@@ -853,27 +853,51 @@ class Duckhunt(commands.Cog):
 
     @commands.command(aliases=["duckmerge"])
     @checks.is_mod()
-    async def duck_merge(self, ctx, oldnick, newnick):
+    async def duck_merge(self, ctx, oldnick: Union[discord.Member, str], newnick: Union[discord.Member, str]):
         """<user1> <user2> - Moves the duck scores from one nick to another nick. Accepts two nicks as input the first will
         have their duck scores removed the second will have the first score added. Warning this cannot be undone.
         """
         guild_id = str(getattr(ctx.guild, 'id', None))
 
-        oldnick = oldnick.lower()
-        newnick = newnick.lower()
+        if isinstance(oldnick, discord.Member):
+            oldnick = oldnick.name.lower()
+        else:
+            oldnick = oldnick.lower()
+
+        if isinstance(newnick, discord.Member):
+            newnick = newnick.name.lower()
+        else:
+            newnick = newnick.lower()
+
+        if oldnick == newnick:
+            out = "Cannot merge the same nicks."
+            return await self.ctx_send(ctx, out, delete_delay=20, source_delay=10)
+
         if not oldnick or not newnick:
             out = "Please specify two nicks for this command."
             return await self.ctx_send(ctx, out, delete_delay=20, source_delay=10)
 
-        oldnickscore = self.db.execute(
-            select(self.table.name, self.table.chan, self.table.shot, self.table.befriend)
-            .where(self.table.network == guild_id, self.table.name == oldnick)
-        ).fetchall()
+        oldnickquery = select(
+            self.table.name,
+            self.table.chan,
+            self.table.shot,
+            self.table.befriend
+        ).where(
+            self.table.network == guild_id,
+            self.table.name == oldnick
+        )
+        oldnickscore = self.db.execute(oldnickquery).fetchall()
 
-        newnickscore = self.db.execute(
-            select(self.table.name, self.table.chan, self.table.shot, self.table.befriend)
-            .where(self.table.network == guild_id, self.table.name == newnick)
-        ).fetchall()
+        newnickquery = select(
+            self.table.name,
+            self.table.chan,
+            self.table.shot,
+            self.table.befriend
+        ).where(
+            self.table.network == guild_id,
+            self.table.name == newnick
+        )
+        newnickscore = self.db.execute(newnickquery).fetchall()
 
         duckmerge: Dict[str, Dict[str, int]] = defaultdict(lambda: defaultdict(int))
         total_kills = 0
