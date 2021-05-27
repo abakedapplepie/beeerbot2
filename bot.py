@@ -13,6 +13,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import scoped_session, sessionmaker
 from sqlalchemy.schema import MetaData
+import traceback
 
 import logging
 import discord
@@ -47,12 +48,11 @@ def _prefix_callable(bot, msg):
 
 class beeerbot(commands.Bot):
     def __init__(self):
-        super().__init__(command_prefix=_prefix_callable,
-                         description=description,
-                         pm_help=None,
-                         help_attrs=dict(hidden=True),
-                         fetch_offine_members=None,
-                         heartbeat_timeout=150.0)
+        allowed_mentions = discord.AllowedMentions(roles=False, everyone=False, users=True)
+        super().__init__(command_prefix=_prefix_callable, description=description,
+                         pm_help=None, help_attrs=dict(hidden=True),
+                         fetch_offline_members=False, heartbeat_timeout=150.0,
+                         allowed_mentions=allowed_mentions)
 
         self.config = munchify(yaml.safe_load(open("config.yml")))
 
@@ -60,11 +60,19 @@ class beeerbot(commands.Bot):
 
         self._prev_events = deque(maxlen=10)
 
+        # guild_id: list
         self.prefixes = Config('prefixes.json')
+        # guild_id and user_id mapped to True
+        # these are users and guilds globally blacklisted
+        # from using the bot
         self.blacklist = Config('blacklist.json')
 
+        # in case of even further spam, add a cooldown mapping
+        # for people who excessively spam commands
         self.spam_control = commands.CooldownMapping.from_cooldown(10, 12.0, commands.BucketType.user)
 
+        # A counter to auto-ban frequent spammers
+        # Triggering the rate limit 5 times in a row will auto-ban the user from the bot.
         self._auto_spam_count = Counter()
 
         # setup db
@@ -75,12 +83,13 @@ class beeerbot(commands.Bot):
         self.log = logging.getLogger("beeerbot")
         log.info("Bot initialized")
 
-        for ext in initial_extensions:
+        for extension in initial_extensions:
             try:
-                self.load_extension(ext)
-                log.info('Extension %s loaded', ext)
-            except Exception:
-                self.log.error('Failed to load extension %s.', ext, exc_info=1)
+                self.load_extension(extension)
+                log.info('Extension %s loaded', extension)
+            except Exception as e:
+                print(f'Failed to load extension {extension}.', file=sys.stderr)
+                traceback.print_exc()
 
     async def on_socket_response(self, msg):
         self._prev_events.append(msg)
@@ -89,12 +98,13 @@ class beeerbot(commands.Bot):
         if isinstance(error, commands.NoPrivateMessage):
             await ctx.author.send('This command cannot be used in private messages.')
         elif isinstance(error, commands.DisabledCommand):
-            await ctx.author.send('This command has been disabled.')
+            await ctx.author.send('Sorry. This command is disabled and cannot be used.')
         elif isinstance(error, commands.CommandInvokeError):
             original = error.original
             if not isinstance(original, discord.HTTPException):
-                log.error(f'In {ctx.command.qualified_name}:', exc_info=1)
-                log.error(f'{original.__class__.__name__}: {original}', exc_info=1)
+                print(f'In {ctx.command.qualified_name}:', file=sys.stderr)
+                traceback.print_tb(original.__traceback__)
+                print(f'{original.__class__.__name__}: {original}', file=sys.stderr)
         elif isinstance(error, commands.ArgumentParsingError):
             await ctx.send(error)
         elif isinstance(error, commands.CheckFailure):
@@ -126,7 +136,10 @@ class beeerbot(commands.Bot):
             pass
 
     async def on_ready(self):
-        log.info('Ready: %s (ID: %s)', self.user, self.user.id)
+        if not hasattr(self, 'uptime'):
+            self.uptime = datetime.datetime.utcnow()
+
+        print(f'Ready: {self.user} (ID: {self.user.id})')
         await self.change_presence(activity=discord.Game(name="bite my shiny metal ass"))
 
     def log_spammer(self, ctx, message, retry_after, *, autoblock=False):
