@@ -30,6 +30,7 @@ SQLAlchemy==1.4.13
 typing-extensions==3.10.0.0
 update-checker==0.18.0
 urllib3==1.26.4
+uvloop==0.15.2
 websocket-client==0.59.0
 yarl==1.6.3
 youtube-dl==2021.5.16
