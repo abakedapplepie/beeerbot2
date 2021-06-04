@@ -217,6 +217,8 @@ class Duckhunt(commands.Cog):
         status.duck_status = 0
         # let's also reset the number of messages said and the list of masks that have spoken.
         status.clear_messages()
+        self.log.info("set_ducktime: Updated duck time...")
+        return
 
     def save_channel_state(self, guild_id, channel_id, status=None):
         if status is None:
@@ -465,6 +467,7 @@ class Duckhunt(commands.Cog):
             return {"shoot": score[0] + shoot, "friend": score[1] + friend}
 
         self.dbadd_entry(nick, channel_id, guild_id, shoot, friend)
+        self.log.info("Done with update_score")
         return {"shoot": shoot, "friend": friend}
 
     async def attack(self, ctx, author: discord.Member, channel_id: str, channel_name: str, guild_id: str, attack_type: str):
@@ -554,12 +557,14 @@ class Duckhunt(commands.Cog):
         except Exception as e:
             status.duck_status = 1
             out = "An unknown error has occurred."
+            self.log.error(f'An error occurred: {e.__class__.__name__}: {e}')
             await self.ctx_send(ctx, out, source_delay=10)
-            self.log.error('Attack error', exc_info=1)
             return
 
+        self.log.info("Done updating score...")
         out = msg.format(nick, shoot - deploy, pluralize_auto(score, "duck"), channel_name)
         await self.ctx_send(ctx, out, delete_delay=30, source_delay=60)
+        self.log.info("Sent text confirmation")
 
         # Discord embed bits
         duck_stmt = ""
@@ -570,34 +575,44 @@ class Duckhunt(commands.Cog):
                 *pluralize_auto(score-1, "duck").split()
             )
 
-        if attack_type == "shoot":
-            duck_msg = await ctx.channel.fetch_message(status.duck_msg_id)
-            duck_msg_content = duck_msg.embeds[0].description
-            description = "{}\n{} pulled the trigger in {:.3f} seconds.\nIt's hanging on the wall {}".format(
-                duck_msg_content, nick, shoot-deploy, duck_stmt
-            )
-            em = discord.Embed(
-                title="this duck has been murdered",
-                description=description,
-                color=996666)
-            em.set_thumbnail(url="https://i.imgur.com/JcIIXH4.png")
-            em.set_footer(text="rest in peace little ducky")
-            await duck_msg.edit(embed=em)
-        else:
-            duck_msg = await ctx.channel.fetch_message(status.duck_msg_id)
-            duck_msg_content = duck_msg.embeds[0].description
-            description = "{}\n{} sexed the duck in {:.3f} seconds.\nIt's hanging out in a harem {}".format(
-                duck_msg_content, nick, shoot-deploy, duck_stmt
-            )
-            em = discord.Embed(
-                title="this duck has been befriended",
-                description=description,
-                color=996666)
-            em.set_thumbnail(url="https://i.imgur.com/V97OwAD.png")
-            em.set_footer(text="fly on little ducky")
-            await duck_msg.edit(embed=em)
+        self.log.info("Updating embed...")
+        try:
+            if attack_type == "shoot":
+                duck_msg = await ctx.channel.fetch_message(status.duck_msg_id)
+                duck_msg_content = duck_msg.embeds[0].description
+                description = "{}\n{} pulled the trigger in {:.3f} seconds.\nIt's hanging on the wall {}".format(
+                    duck_msg_content, nick, shoot-deploy, duck_stmt
+                )
+                em = discord.Embed(
+                    title="this duck has been murdered",
+                    description=description,
+                    color=996666)
+                em.set_thumbnail(url="https://i.imgur.com/JcIIXH4.png")
+                em.set_footer(text="rest in peace little ducky")
+                await duck_msg.edit(embed=em)
+            else:
+                duck_msg = await ctx.channel.fetch_message(status.duck_msg_id)
+                duck_msg_content = duck_msg.embeds[0].description
+                description = "{}\n{} sexed the duck in {:.3f} seconds.\nIt's hanging out in a harem {}".format(
+                    duck_msg_content, nick, shoot-deploy, duck_stmt
+                )
+                em = discord.Embed(
+                    title="this duck has been befriended",
+                    description=description,
+                    color=996666)
+                em.set_thumbnail(url="https://i.imgur.com/V97OwAD.png")
+                em.set_footer(text="fly on little ducky")
+                await duck_msg.edit(embed=em)
+        except Exception as e:
+            self.log.error(f'An error occurred: {e.__class__.__name__}: {e}')
+            msg = "Something went wrong with updating the duck embed, but we still recorded your score."
+            await self.ctx_send(ctx, msg, source_delay=10)
+        self.log.info("Done updating embed...")
 
+        self.log.info("Setting new ducktime...")
         self.set_ducktime(channel_id, guild_id)
+        self.log.info("Done setting new ducktime. Done!")
+        return
 
     @commands.command()
     async def bang(self, ctx):
