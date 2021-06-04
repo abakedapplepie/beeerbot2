@@ -2,6 +2,7 @@ import asyncio
 import contextlib
 import importlib
 import logging
+from logging.handlers import RotatingFileHandler
 import sys
 import traceback
 
@@ -15,34 +16,49 @@ from bot import beeerbot, initial_extensions
 from util import database
 
 
+try:
+    import uvloop
+except ImportError:
+    pass
+else:
+    asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
+
+
+class RemoveNoise(logging.Filter):
+    def __init__(self):
+        super().__init__(name='discord.state')
+
+    def filter(self, record):
+        if record.levelname == 'WARNING' and 'referencing an unknown' in record.msg:
+            return False
+        return True
+
+
 @contextlib.contextmanager
 def setup_logging():
     try:
+        # __enter__
+        max_bytes = 32 * 1024 * 1024 # 32 MiB
         logging.getLogger('discord').setLevel(logging.INFO)
         logging.getLogger('discord.http').setLevel(logging.WARNING)
+        logging.getLogger('discord.state').addFilter(RemoveNoise())
 
-        log = logging.getLogger("beeerbot")
+        log = logging.getLogger()
         log.setLevel(logging.INFO)
-        filehandler = logging.FileHandler(filename='beeerbot.log', encoding='utf-8', mode='w')
-        formatter = logging.Formatter(
-            "[{asctime}] [{levelname:<7}][{filename}:{lineno:<4}] {name}: {message}",
-            datefmt="%Y-%m-%d %H:%M:%S",
-            style="{")
-        filehandler.setFormatter(formatter)
-        log.addHandler(filehandler)
-
-        stdouthandler = logging.StreamHandler(sys.stdout)
-        stdouthandler.setLevel(logging.DEBUG)
-        stdouthandler.setFormatter(formatter)
-        log.addHandler(stdouthandler)
+        handler = RotatingFileHandler(filename='beeerbot.log', encoding='utf-8', mode='w', maxBytes=max_bytes, backupCount=5)
+        dt_fmt = '%Y-%m-%d %H:%M:%S'
+        fmt = logging.Formatter('[{asctime}] [{levelname:<7}][{filename}:{lineno:<4}] {name}: {message}', dt_fmt, style='{')
+        handler.setFormatter(fmt)
+        log.addHandler(handler)
         log.info("Launcher initialized")
 
         yield
     finally:
+        # __exit__
         handlers = log.handlers[:]
-        for h in handlers:
-            h.close()
-            log.removeHandler(h)
+        for hdlr in handlers:
+            hdlr.close()
+            log.removeHandler(hdlr)
 
 
 def run_bot():
@@ -53,6 +69,7 @@ def run_bot():
 @click.group(invoke_without_command=True, options_metavar='[options]')
 @click.pass_context
 def main(ctx):
+    """Launches the bot."""
     if ctx.invoked_subcommand is None:
         loop = asyncio.get_event_loop()
         with setup_logging():
