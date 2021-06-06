@@ -87,14 +87,14 @@ class ChannelState:
         """Should we deploy a duck?"""
         msg_delay = self.config.duckhunt_options.get("min_lines", 10)
         mask_req = self.config.duckhunt_options.get("min_users", 5)
-        test_chan = int(self.config.duckhunt_options.get("test_channel", 0))
+        test_chan = self.config.duckhunt_options.get("test_channel", 0)
 
         return (
             self.game_on
             and self.duck_status == 0
             and self.next_duck_time <= time()
-            and (self.messages >= msg_delay or int(chan) == test_chan)
-            and (len(self.masks) >= mask_req or int(chan) == test_chan)
+            and (self.messages >= msg_delay or chan == test_chan)
+            and (len(self.masks) >= mask_req or chan == test_chan)
         )
 
     def handle_message(self, author_id):
@@ -117,9 +117,9 @@ class Duckhunt(commands.Cog):
         self.delete_source_msg = False
 
         # Grab config options
-        self.min_ducktime = int(self.config.duckhunt_options.get("min_ducktime", 480))
-        self.max_ducktime = int(self.config.duckhunt_options.get("max_ducktime", 3600))
-        self.test_channel_id = int(self.config.duckhunt_options.get("test_channel", 0))
+        self.min_ducktime = self.config.duckhunt_options.get("min_ducktime", 480)
+        self.max_ducktime = self.config.duckhunt_options.get("max_ducktime", 3600)
+        self.test_channel_id = self.config.duckhunt_options.get("test_channel", 0)
 
         # Set up duck parts
         self.duck_tail = "・゜゜・。。・゜゜"
@@ -147,13 +147,13 @@ class Duckhunt(commands.Cog):
 
         # Set up game status
         self.T = TypeVar("T")
-        self.ConnMap = Dict[str, Dict[str, self.T]]
+        self.ConnMap = Dict[int, Dict[int, self.T]]
         self.scripters: Dict[int, float] = defaultdict(float)
         self.chan_locks: ConnMap[Lock] = defaultdict(lambda: defaultdict(Lock))
         self.game_status: ConnMap[ChannelState] = defaultdict(
             lambda: defaultdict(ChannelState)
         )
-        self.opt_out: Dict[str, List[str]] = defaultdict(list)
+        self.opt_out: Dict[int, List[int]] = defaultdict(list)
 
         self.load_optout()
 
@@ -194,21 +194,21 @@ class Duckhunt(commands.Cog):
     def load_status(self):
         rows = self.db.execute(select(self.status_table)).scalars().all()
         for row in rows:
-            guild_id = row.network
-            channel_id = row.chan
+            guild_id = int(row.network)
+            channel_id = int(row.chan)
             status = self.get_state_table(guild_id, channel_id)
             status.game_on = row.active
             status.no_duck_kick = row.duck_kick
             if status.game_on:
                 self.set_ducktime(channel_id, guild_id)
 
-    def get_state_table(self, guild_id, channel_id):
-        return self.game_status[guild_id.casefold()][channel_id.casefold()]
+    def get_state_table(self, guild_id: int, channel_id: int):
+        return self.game_status[guild_id][channel_id]
 
     def set_ducktime(self, channel_id, guild_id):
         status = self.get_state_table(guild_id, channel_id)  # type: ChannelState
         # Artificially set next_duck_time low for testing purposes
-        if self.test_channel_id == int(channel_id):
+        if self.test_channel_id == channel_id:
             status.next_duck_time = int(time()) + 30
         else:
             status.next_duck_time = random.randint(
@@ -219,7 +219,7 @@ class Duckhunt(commands.Cog):
         status.clear_messages()
         return
 
-    def save_channel_state(self, guild_id, channel_id, status=None):
+    def save_channel_state(self, guild_id: int, channel_id: int, status=None):
         if status is None:
             status = self.get_state_table(guild_id, channel_id)
 
@@ -269,17 +269,17 @@ class Duckhunt(commands.Cog):
 
         self.save_channel_state(guild_id, channel_id, status)
 
-    def is_opt_out(self, guild_id, channel_id):
-        if not guild_id:
-            return False
-        return int(channel_id) in self.opt_out[int(guild_id)]
+    def is_opt_out(self, guild_id: int, channel_id: int):
+        if not guild_id or guild_id == 0:
+            return True
+        return channel_id in self.opt_out[guild_id]
 
     @commands.Cog.listener('on_message')
     async def increment_msg_counter(self, msg):
         """Increment the number of messages said in an active game channel. Also keep track of the unique masks that are speaking."""
-        guild_id = str(getattr(msg.guild, 'id', None))
-        channel_id = str(getattr(msg.channel, 'id', None))
-        author_id = str(getattr(msg.author, 'id', None))
+        guild_id = getattr(msg.guild, 'id', 0)
+        channel_id = getattr(msg.channel, 'id', 0)
+        author_id = getattr(msg.author, 'id', 0)
 
         if self.is_opt_out(guild_id, channel_id):
             return
@@ -290,9 +290,9 @@ class Duckhunt(commands.Cog):
     @checks.is_mod()
     async def start_hunt(self, ctx):
         """This command starts a duckhunt in your channel, to stop the hunt use .stophunt"""
-        guild_id = str(getattr(ctx.guild, 'id', None))
-        channel_id = str(getattr(ctx.channel, 'id', None))
-        channel_name = str(getattr(ctx.channel, 'name', None))
+        guild_id = getattr(ctx.guild, 'id', 0)
+        channel_id = getattr(ctx.channel, 'id', 0)
+        channel_name = getattr(ctx.channel, 'name', '')
 
         if self.is_opt_out(guild_id, channel_id):
             return
@@ -318,9 +318,9 @@ class Duckhunt(commands.Cog):
     @checks.is_mod()
     async def stop_hunt(self, ctx):
         """This command stops the duck hunt in your channel. Scores will be preserved"""
-        guild_id = str(getattr(ctx.guild, 'id', None))
-        channel_id = str(getattr(ctx.channel, 'id', None))
-        channel_name = str(getattr(ctx.channel, 'name', None))
+        guild_id = getattr(ctx.guild, 'id', 0)
+        channel_id = getattr(ctx.channel, 'id', 0)
+        channel_name = getattr(ctx.channel, 'name', '')
 
         if self.is_opt_out(guild_id, channel_id):
             return
@@ -340,8 +340,8 @@ class Duckhunt(commands.Cog):
         !duckmute enable|disable so that people are kicked for shooting or befriending
         a non-existent duck. Default is off.
         """
-        guild_id = str(getattr(ctx.guild, 'id', None))
-        channel_id = str(getattr(ctx.channel, 'id', None))
+        guild_id = getattr(ctx.guild, 'id', 0)
+        channel_id = getattr(ctx.channel, 'id', 0)
 
         if self.is_opt_out(guild_id, channel_id):
             return
@@ -383,7 +383,8 @@ class Duckhunt(commands.Cog):
         for network in self.game_status:
             for chan in self.game_status[network]:
                 status = self.get_state_table(network, chan)
-                if not status.should_deploy(chan):
+                channel = self.bot.get_channel(chan)
+                if not status.should_deploy(chan) or not channel:
                     continue
 
                 # deploy a duck to channel
@@ -391,7 +392,6 @@ class Duckhunt(commands.Cog):
                     status.duck_status = 1
                     status.duck_time = time()
                     dtail, dbody, dnoise = self.generate_duck()
-                    channel = self.bot.get_channel(int(chan))
                     em = discord.Embed(
                         title="A duck has appeared!",
                         description=f"{dtail}{dbody}{dnoise}",
@@ -472,7 +472,7 @@ class Duckhunt(commands.Cog):
         if self.is_opt_out(guild_id, channel_id):
             return
 
-        nick = str(getattr(ctx.author, 'name', None))
+        nick = getattr(ctx.author, 'name', '')
         status = self.get_state_table(guild_id, channel_id)
 
         # Set various defaults based on attack type
@@ -609,20 +609,20 @@ class Duckhunt(commands.Cog):
     @commands.command()
     async def bang(self, ctx):
         """- when there is a duck on the loose use this command to shoot it."""
-        guild_id = str(getattr(ctx.guild, 'id', None))
-        channel_id = str(getattr(ctx.channel, 'id', None))
-        channel_name = str(getattr(ctx.channel, 'name', None))
-        author_name = str(getattr(ctx.author, 'name', None))
+        guild_id = getattr(ctx.guild, 'id', 0)
+        channel_id = getattr(ctx.channel, 'id', 0)
+        channel_name = getattr(ctx.channel, 'name', '')
+        author_name = getattr(ctx.author, 'name', '')
         with self.chan_locks[guild_id][channel_id.casefold()]:
             return await self.attack(ctx, ctx.author, channel_id, channel_name, guild_id, "shoot")
 
     @commands.command(aliases=["bef"])
     async def befriend(self, ctx):
         """- when there is a duck on the loose use this command to befriend it before someone else shoots it."""
-        guild_id = str(getattr(ctx.guild, 'id', None))
-        channel_id = str(getattr(ctx.channel, 'id', None))
-        channel_name = str(getattr(ctx.channel, 'name', None))
-        author_name = str(getattr(ctx.author, 'name', None))
+        guild_id = getattr(ctx.guild, 'id', 0)
+        channel_id = getattr(ctx.channel, 'id', 0)
+        channel_name = getattr(ctx.channel, 'name', '')
+        author_name = getattr(ctx.author, 'name', '')
         with self.chan_locks[guild_id][channel_id.casefold()]:
             return await self.attack(ctx, ctx.author, channel_id, channel_name, guild_id, "befriend")
 
@@ -637,7 +637,7 @@ class Duckhunt(commands.Cog):
     def get_scores(self, score_type, guild_id, channel_id=None):
         clause = self.table.network == guild_id
         if channel_id is not None:
-            clause = and_(clause, self.table.chan == channel_id.lower())
+            clause = and_(clause, self.table.chan == channel_id)
         query_column = getattr(self.table, score_type)
         query = select(self.table.name, query_column).where(clause).order_by(
             desc(query_column)
@@ -691,7 +691,7 @@ class Duckhunt(commands.Cog):
         return scores_dict
 
     async def display_scores(self, ctx, score_type: ScoreType, text, channel_id, guild_id):
-        channel_name = str(getattr(ctx.channel, 'name', None))
+        channel_name = getattr(ctx.channel, 'name', '')
 
         if self.is_opt_out(guild_id, channel_id):
             return
@@ -739,8 +739,8 @@ class Duckhunt(commands.Cog):
         channel, if 'global' is specified all channels in the database are
         included.
         """
-        guild_id = str(getattr(ctx.guild, 'id', None))
-        channel_id = str(getattr(ctx.channel, 'id', None))
+        guild_id = getattr(ctx.guild, 'id', 0)
+        channel_id = getattr(ctx.channel, 'id', 0)
         await self.display_scores(ctx, self.score_types["friend"], text, channel_id, guild_id)
 
     @commands.command()
@@ -749,8 +749,8 @@ class Duckhunt(commands.Cog):
         channel, if 'global' is specified all channels in the database are
         included.
         """
-        guild_id = str(getattr(ctx.guild, 'id', None))
-        channel_id = str(getattr(ctx.channel, 'id', None))
+        guild_id = getattr(ctx.guild, 'id', 0)
+        channel_id = getattr(ctx.channel, 'id', 0)
         await self.display_scores(ctx, self.score_types["killer"], text, channel_id, guild_id)
 
     @commands.command()
@@ -759,8 +759,12 @@ class Duckhunt(commands.Cog):
         """<nick> - Allows people to be manually added to cooldown list for
         specified time (in seconds)
         """
-        guild_id = str(getattr(ctx.guild, 'id', None))
-        channel_id = str(getattr(ctx.channel, 'id', None))
+        guild_id = getattr(ctx.guild, 'id', 0)
+        channel_id = getattr(ctx.channel, 'id', 0)
+
+        if self.is_opt_out(guild_id, channel_id):
+            return
+
         status = self.get_state_table(guild_id, channel_id)
 
         if nick.id in self.scripters and self.scripters[nick.id] > time():
@@ -794,9 +798,9 @@ class Duckhunt(commands.Cog):
         current channel. hunt_opt_out add #channel will disable all duck hunt commands in the specified channel.
         hunt_opt_out remove #channel will re-enable the game for the specified channel.
         """
-        guild_id = str(getattr(ctx.guild, 'id', None))
-        channel_id = str(getattr(ctx.channel, 'id', None))
-        channel_name = str(getattr(ctx.channel, 'name', None))
+        guild_id = getattr(ctx.guild, 'id', 0)
+        channel_id = getattr(ctx.channel, 'id', 0)
+        channel_name = getattr(ctx.channel, 'name', '')
         status = self.get_state_table(guild_id, channel_id)
 
         if not text:
@@ -864,7 +868,7 @@ class Duckhunt(commands.Cog):
         """<user1> <user2> - Moves the duck scores from one nick to another nick. Accepts two nicks as input the first will
         have their duck scores removed the second will have the first score added. Warning this cannot be undone.
         """
-        guild_id = str(getattr(ctx.guild, 'id', None))
+        guild_id = getattr(ctx.guild, 'id', 0)
 
         if isinstance(oldnick, discord.Member):
             oldnick = oldnick.name.lower()
@@ -971,10 +975,10 @@ class Duckhunt(commands.Cog):
     @commands.command(aliases=["ducks"])
     async def ducks_user(self, ctx, *, text=""):
         """<nick> - Prints a users duck stats. If no nick is input it will check the calling username."""
-        guild_id = str(getattr(ctx.guild, 'id', None))
-        channel_id = str(getattr(ctx.channel, 'id', None))
-        channel_name = str(getattr(ctx.channel, 'name', None))
-        nick = str(getattr(ctx.author, 'name', None))
+        guild_id = getattr(ctx.guild, 'id', 0)
+        channel_id = getattr(ctx.channel, 'id', 0)
+        channel_name = getattr(ctx.channel, 'name', '')
+        nick = getattr(ctx.author, 'name', '')
 
         name = nick.lower()
         if text:
@@ -1000,7 +1004,7 @@ class Duckhunt(commands.Cog):
         if scores:
             has_hunted_in_chan = False
             for row in scores:
-                if row.chan.lower() == channel_id.lower():
+                if row.chan == channel_id:
                     has_hunted_in_chan = True
                     ducks["chankilled"] += row.shot
                     ducks["chanfriends"] += row.befriend
@@ -1027,7 +1031,7 @@ class Duckhunt(commands.Cog):
                     name,
                     pluralize_auto(ducks["chankilled"], "duck"),
                     pluralize_auto(ducks["chanfriends"], "duck"),
-                    chan,
+                    channel_name,
                     pluralize_auto(ducks["chans"], "channel"),
                     pluralize_auto(ducks["killed"], "duck"),
                     pluralize_auto(ducks["friend"], "duck"),
@@ -1042,10 +1046,10 @@ class Duckhunt(commands.Cog):
     @commands.command(aliases=["duckstats"])
     async def duck_stats(self, ctx):
         """- Prints duck statistics for the entire channel and totals for the network."""
-        guild_id = str(getattr(ctx.guild, 'id', None))
-        channel_id = str(getattr(ctx.channel, 'id', None))
-        channel_name = str(getattr(ctx.channel, 'name', None))
-        
+        guild_id = getattr(ctx.guild, 'id', 0)
+        channel_id = getattr(ctx.channel, 'id', 0)
+        channel_name = getattr(ctx.channel, 'name', 0)
+
         scores = self.db.execute(
             select(
                 self.table.name, self.table.chan, self.table.shot, self.table.befriend
