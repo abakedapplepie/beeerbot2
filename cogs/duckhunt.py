@@ -149,7 +149,7 @@ class Duckhunt(commands.Cog):
         self.T = TypeVar("T")
         self.ConnMap = Dict[int, Dict[int, self.T]]
         self.scripters: Dict[int, float] = defaultdict(float)
-        self.chan_locks: ConnMap[Lock] = defaultdict(lambda: defaultdict(Lock))
+        self.chan_locks: ConnMap[asyncio.Lock] = defaultdict(lambda: defaultdict(asyncio.Lock))
         self.game_status: ConnMap[ChannelState] = defaultdict(
             lambda: defaultdict(ChannelState)
         )
@@ -613,7 +613,7 @@ class Duckhunt(commands.Cog):
         channel_id = getattr(ctx.channel, 'id', 0)
         channel_name = getattr(ctx.channel, 'name', '')
         author_name = getattr(ctx.author, 'name', '')
-        with self.chan_locks[guild_id][channel_id.casefold()]:
+        async with self.chan_locks[guild_id][channel_id]:
             return await self.attack(ctx, ctx.author, channel_id, channel_name, guild_id, "shoot")
 
     @commands.command(aliases=["bef"])
@@ -623,7 +623,7 @@ class Duckhunt(commands.Cog):
         channel_id = getattr(ctx.channel, 'id', 0)
         channel_name = getattr(ctx.channel, 'name', '')
         author_name = getattr(ctx.author, 'name', '')
-        with self.chan_locks[guild_id][channel_id.casefold()]:
+        async with self.chan_locks[guild_id][channel_id]:
             return await self.attack(ctx, ctx.author, channel_id, channel_name, guild_id, "befriend")
 
     def top_list(self, prefix, data, join_char=" • "):
