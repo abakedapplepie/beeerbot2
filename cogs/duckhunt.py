@@ -257,7 +257,7 @@ class Duckhunt(commands.Cog):
                 self.save_channel_state(network, chan, status)
 
                 if _sleep:
-                    sleep(5)
+                    await asyncio.sleep(10)
 
     def set_game_state(self, guild_id, channel_id, active=None, duck_kick=None):
         status = self.get_state_table(guild_id, channel_id)
