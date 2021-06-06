@@ -217,7 +217,6 @@ class Duckhunt(commands.Cog):
         status.duck_status = 0
         # let's also reset the number of messages said and the list of masks that have spoken.
         status.clear_messages()
-        self.log.info("set_ducktime: Updated duck time...")
         return
 
     def save_channel_state(self, guild_id, channel_id, status=None):
@@ -467,7 +466,6 @@ class Duckhunt(commands.Cog):
             return {"shoot": score[0] + shoot, "friend": score[1] + friend}
 
         self.dbadd_entry(nick, channel_id, guild_id, shoot, friend)
-        self.log.info("Done with update_score")
         return {"shoot": shoot, "friend": friend}
 
     async def attack(self, ctx, author: discord.Member, channel_id: str, channel_name: str, guild_id: str, attack_type: str):
@@ -561,10 +559,8 @@ class Duckhunt(commands.Cog):
             await self.ctx_send(ctx, out, source_delay=10)
             return
 
-        self.log.info("Done updating score...")
         out = msg.format(nick, shoot - deploy, pluralize_auto(score, "duck"), channel_name)
         await self.ctx_send(ctx, out, delete_delay=30, source_delay=60)
-        self.log.info("Sent text confirmation")
 
         # Discord embed bits
         duck_stmt = ""
@@ -575,7 +571,6 @@ class Duckhunt(commands.Cog):
                 *pluralize_auto(score-1, "duck").split()
             )
 
-        self.log.info("Updating embed...")
         try:
             if attack_type == "shoot":
                 duck_msg = await ctx.channel.fetch_message(status.duck_msg_id)
@@ -607,11 +602,8 @@ class Duckhunt(commands.Cog):
             self.log.error(f'An error occurred: {e.__class__.__name__}: {e}')
             msg = "Something went wrong with updating the duck embed, but we still recorded your score."
             await self.ctx_send(ctx, msg, source_delay=10)
-        self.log.info("Done updating embed...")
 
-        self.log.info("Setting new ducktime...")
         self.set_ducktime(channel_id, guild_id)
-        self.log.info("Done setting new ducktime. Done!")
         return
 
     @commands.command()
