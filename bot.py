@@ -3,6 +3,7 @@ import sys
 from collections import Counter, deque, defaultdict
 import asyncio
 import json
+from pathlib import Path
 import random
 from random import shuffle
 import base64
@@ -79,6 +80,10 @@ class beeerbot(commands.Bot):
         db_path = self.config.bot_options.get('database', 'sqlite:///cloudbot.db')
         self.db_engine = create_engine(db_path, future=True)
         database.configure(self.db_engine, future=True)
+
+        # Set data path
+        self.base_dir = Path().resolve()
+        self.data_path = self.base_dir / "data"
 
         self.log = logging.getLogger("beeerbot")
         log.info("Bot initialized")
