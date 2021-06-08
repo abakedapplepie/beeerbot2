@@ -3,7 +3,6 @@ import logging
 import random
 from typing import Dict, List
 
-import discord
 from discord.ext import commands
 
 
@@ -25,7 +24,6 @@ class Lenny(commands.Cog):
             data_file = self.bot.data_path / "lenny.json"
             with data_file.open(encoding="utf-8") as f:
                 self.lenny_data.update(json.load(f))
-                self.log.info(lenny_data)
         except Exception as e:
             self.log.error('Exception', exc_info=True)
 
