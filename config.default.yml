@@ -3,6 +3,8 @@ discord:
   secret:
   public_key:
   application_id:
+  webhook_id:
+  webhook_token:
 
 api_keys:
   tvdb:
@@ -39,6 +41,7 @@ bot_options:
   data_files: data/
   database: sqlite:///cloudbot.db
   factoid_char: '?'
+  guild:
 
 comic_options:
   background_file: backgrounds/cantillon.jpg

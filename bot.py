@@ -27,15 +27,20 @@ from cogs.utils import context
 from cogs.utils.config import Config
 from util import database
 
-log = logging.getLogger("beeerbot")
+log = logging.getLogger(__name__)
 
 description = """
 beeeeer
 """
 
-initial_extensions = {
-    'cogs.comic', 'cogs.factoids', 'cogs.lenny', 'cogs.duckhunt', 'cogs.cardsagainsthumanity'
-}
+initial_extensions = (
+    'cogs.comic',
+    'cogs.factoids',
+    'cogs.lenny',
+    'cogs.duckhunt',
+    'cogs.cardsagainsthumanity',
+    'cogs.stats'
+)
 
 
 def _prefix_callable(bot, msg):
@@ -50,10 +55,19 @@ def _prefix_callable(bot, msg):
 class beeerbot(commands.Bot):
     def __init__(self):
         allowed_mentions = discord.AllowedMentions(roles=False, everyone=False, users=True)
+        intents = discord.Intents(
+            guilds=True,
+            members=True,
+            bans=True,
+            emojis=True,
+            voice_states=True,
+            messages=True,
+            reactions=True,
+        )
         super().__init__(command_prefix=_prefix_callable, description=description,
                          pm_help=None, help_attrs=dict(hidden=True),
                          fetch_offline_members=False, heartbeat_timeout=150.0,
-                         allowed_mentions=allowed_mentions)
+                         allowed_mentions=allowed_mentions, intents=intents)
 
         self.config = munchify(yaml.safe_load(open("config.yml")))
 
@@ -61,8 +75,13 @@ class beeerbot(commands.Bot):
 
         self._prev_events = deque(maxlen=10)
 
+        # shows the last attempted IDENTIFYs and RESUMEs
+        self.resumes = defaultdict(list)
+        self.identifies = defaultdict(list)
+
         # guild_id: list
         self.prefixes = Config('prefixes.json')
+
         # guild_id and user_id mapped to True
         # these are users and guilds globally blacklisted
         # from using the bot
@@ -85,7 +104,7 @@ class beeerbot(commands.Bot):
         self.base_dir = Path().resolve()
         self.data_path = self.base_dir / "data"
 
-        self.log = logging.getLogger("beeerbot")
+        self.log = logging.getLogger(__name__)
         log.info("Bot initialized")
 
         for extension in initial_extensions:
@@ -115,22 +134,6 @@ class beeerbot(commands.Bot):
         elif isinstance(error, commands.CheckFailure):
             log.error(error)
 
-    def get_guild_prefixes(self, guild, *, local_inject=_prefix_callable):
-        proxy_msg = discord.Object(id=None)
-        proxy_msg.guild = guild
-        return local_inject(self, proxy_msg)
-
-    def get_raw_guild_prefixes(self, guild_id):
-        return self.prefixes.get(guild_id, ['?', '!'])
-
-    async def set_guild_prefixes(self, guild, prefixes):
-        if len(prefixes) == 0:
-            await self.prefixes.put(guild.id, [])
-        elif len(prefixes) > 10:
-            raise RuntimeError('Cannot have more than 10 prefixes.')
-        else:
-            await self.prefixes.put(guild.id, sorted(set(prefixes), reverse=True))
-
     async def add_to_blacklist(self, object_id):
         await self.blacklist.put(object_id, True)
 
@@ -140,12 +143,42 @@ class beeerbot(commands.Bot):
         except KeyError:
             pass
 
+    async def get_or_fetch_member(self, guild, member_id):
+        """Looks up a member in cache or fetches if not found.
+        Parameters
+        -----------
+        guild: Guild
+            The guild to look in.
+        member_id: int
+            The member ID to search for.
+        Returns
+        ---------
+        Optional[Member]
+            The member or None if not found.
+        """
+
+        member = guild.get_member(member_id)
+        if member is not None:
+            return member
+
+        members = await guild.query_members(limit=1, user_ids=[member_id], cache=True)
+        if not members:
+            return None
+        return members[0]
+
     async def on_ready(self):
         if not hasattr(self, 'uptime'):
             self.uptime = datetime.datetime.utcnow()
 
         print(f'Ready: {self.user} (ID: {self.user.id})')
         await self.change_presence(activity=discord.Game(name="bite my shiny metal ass"))
+
+    @discord.utils.cached_property
+    def stats_webhook(self):
+        wh_id = self.config.discord.webhook_id
+        wh_token = self.config.discord.webhook_token
+        hook = discord.Webhook.partial(id=wh_id, token=wh_token, adapter=discord.AsyncWebhookAdapter(self.session))
+        return hook
 
     def log_spammer(self, ctx, message, retry_after, *, autoblock=False):
         guild_name = getattr(ctx.guild, 'name', 'No Guild (DMs)')
@@ -154,6 +187,14 @@ class beeerbot(commands.Bot):
         log.warning(fmt, message.author, message.author.id, guild_name, guild_id, retry_after)
         if not autoblock:
             return
+
+        wh = self.stats_webhook
+        embed = discord.Embed(title='Auto-blocked Member', colour=0xDDA453)
+        embed.add_field(name='Member', value=f'{message.author} (ID: {message.author.id})', inline=False)
+        embed.add_field(name='Guild Info', value=f'{guild_name} (ID: {guild_id})', inline=False)
+        embed.add_field(name='Channel Info', value=f'{message.channel} (ID: {message.channel.id}', inline=False)
+        embed.timestamp = datetime.datetime.utcnow()
+        return wh.send(embed=embed)
 
     async def process_commands(self, message):
         ctx = await self.get_context(message, cls=context.Context)
