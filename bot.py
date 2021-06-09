@@ -170,7 +170,10 @@ class beeerbot(commands.Bot):
         if not hasattr(self, 'uptime'):
             self.uptime = datetime.datetime.utcnow()
 
-        print(f'Ready: {self.user} (ID: {self.user.id})')
+        ready_msg = f'Ready: {self.user} (ID: {self.user.id})'
+        print(ready_msg)
+        wh = self.stats_webhook
+        await wh.send(ready_msg)
         await self.change_presence(activity=discord.Game(name="bite my shiny metal ass"))
 
     @discord.utils.cached_property
@@ -232,6 +235,10 @@ class beeerbot(commands.Bot):
         await self.process_commands(message)
 
     async def close(self):
+        close_msg = f'Bot shutting down...'
+        print(close_msg)
+        wh = self.stats_webhook
+        await wh.send(close_msg)
         await super().close()
         await self.session.close()
 
