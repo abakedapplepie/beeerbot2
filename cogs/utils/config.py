@@ -3,18 +3,17 @@ import os
 import uuid
 import asyncio
 
-
 def _create_encoder(cls):
     def _default(self, o):
         if isinstance(o, cls):
             return o.to_json()
         return super().default(o)
 
-    return type('_Encoder', (json.JSONEncoder, ), {'default': _default})
-
+    return type('_Encoder', (json.JSONEncoder,), { 'default': _default })
 
 class Config:
     """The "database" object. Internally based on ``json``."""
+
     def __init__(self, name, **options):
         self.name = name
         self.object_hook = options.pop('object_hook', None)
@@ -49,11 +48,7 @@ class Config:
     def _dump(self):
         temp = '%s-%s.tmp' % (uuid.uuid4(), self.name)
         with open(temp, 'w', encoding='utf-8') as tmp:
-            json.dump(self._db.copy(),
-                      tmp,
-                      ensure_ascii=True,
-                      cls=self.encoder,
-                      separators=(',', ':'))
+            json.dump(self._db.copy(), tmp, ensure_ascii=True, cls=self.encoder, separators=(',', ':'))
 
         # atomically move the file
         os.replace(temp, self.name)

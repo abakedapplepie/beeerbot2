@@ -26,7 +26,7 @@ class FactoidsTable(database.base):
 
 class Factoids(commands.Cog):
     def __init__(self, bot: commands.Bot):
-        self.log = logging.getLogger("beeerbot")
+        self.log = logging.getLogger(__name__)
         self.db = database.Session
         self.table = FactoidsTable
         self.factoid_char = bot.config.bot_options.get('factoid_char', '?')

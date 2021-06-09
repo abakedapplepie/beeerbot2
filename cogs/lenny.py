@@ -9,11 +9,11 @@ from discord.ext import commands
 class Lenny(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
-        self.log = logging.getLogger("beeerbot")
-        self.log.info("Lenny initialized")
+        self.log = logging.getLogger(__name__)
         self.config = bot.config
         self.lenny_data: Dict[str, List[str]] = {}
         self.load_faces()
+        self.log.info("Lenny initialized")
 
     async def cog_command_error(self, ctx, error):
         return

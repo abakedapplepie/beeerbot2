@@ -13,7 +13,7 @@ from discord.ext import commands
 class Quotes(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
-        self.log = logging.getLogger("beeerbot")
+        self.log = logging.getLogger(__name__)
         self.config = bot.config
 
         self.table = Table(

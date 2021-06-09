@@ -19,11 +19,10 @@ from discord.ext import commands
 class Comic(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
-        self.log = logging.getLogger("beeerbot")
-        self.log.info("Comic initialized")
+        self.log = logging.getLogger(__name__)
         self.config = bot.config
-        
         self.lol = ['mfw', 'dae', 'member', 'tfw', 'lol']
+        self.log.info("Comic initialized")
 
     async def cog_command_error(self, ctx, error):
         return
