@@ -39,7 +39,8 @@ initial_extensions = (
     'cogs.lenny',
     'cogs.duckhunt',
     'cogs.cardsagainsthumanity',
-    'cogs.stats'
+    'cogs.stats',
+    'cogs.botops'
 )
 
 
