@@ -40,6 +40,15 @@ you have loaded.
 
 To configure the SQLite database for use by the bot, go to the directory where `launcher.py` is located, and run the script by doing `python3 launcher.py db init`.
 
+7. **PM2 configuration (required for bot restart ability)**
+
+* Ensure you have Node and npm installed (instructions [here](https://docs.npmjs.com/downloading-and-installing-node-js-and-npm))
+* Ensure you have npm installed (instructions [here](https://pm2.keymetrics.io/docs/usage/quick-start/))
+* Copy the `ecosystem.config.default.js` file in the root directory and rename to `ecosystem.config.js`
+* Update the `interpreter` field with the correct absolute path to the Python binary in the virtualenv
+* Start the bot with `pm2 start ecosystem.config.js` (this replaces the running instructions below)
+
+
 ## Running
 
 Launch with `python launcher.py`
