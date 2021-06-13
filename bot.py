@@ -103,7 +103,7 @@ class beeerbot(commands.Bot):
 
         # Set data path
         self.base_dir = Path().resolve()
-        self.data_path = self.config.bot_options.get('data_dir', self.base_dir / "data")
+        self.data_path = self.base_dir / "data"
 
         self.log = logging.getLogger(__name__)
         log.info("Bot initialized")
