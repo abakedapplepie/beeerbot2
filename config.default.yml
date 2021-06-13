@@ -38,15 +38,13 @@ api_keys:
   giphy:
 
 bot_options:
-  data_files: data/
   database: sqlite:///cloudbot.db
   factoid_char: '?'
   guild:
 
 comic_options:
-  background_file: backgrounds/cantillon.jpg
-  font_file: fonts/Calibri.ttf
-  char_files: chars/
+  background_file: cantillon.jpg
+  font_file: Calibri.ttf
   font_size: 16
   text_color:
   buffer_size: 10
