@@ -21,6 +21,10 @@ class Comic(commands.Cog):
         self.bot = bot
         self.log = logging.getLogger(__name__)
         self.config = bot.config
+        # Comic specific config
+        self.char_files = self.bot.data_path / "chars"
+        self.background_file = self.bot.data_path / "backgrounds" / self.config.comic_options.background_file
+        self.font_file = self.bot.data_path / "fonts" / self.config.comic_options.font_file
         self.lol = ['mfw', 'dae', 'member', 'tfw', 'lol']
         self.log.info("Comic initialized")
 
@@ -188,9 +192,9 @@ class Comic(commands.Cog):
         panelheight = 300
         panelwidth = 450
 
-        filenames = os.listdir(self.config.comic_options.char_files)
+        filenames = os.listdir(self.char_files)
         shuffle(filenames)
-        filenames = map(lambda x: os.path.join(self.config.comic_options.char_files, x), filenames[:len(chars)])
+        filenames = map(lambda x: os.path.join(self.char_files, x), filenames[:len(chars)])
         chars = list(chars)
         chars = zip(chars, filenames)
         charmap = dict()
@@ -200,10 +204,10 @@ class Comic(commands.Cog):
         imgwidth = panelwidth
         imgheight = panelheight * len(panels)
 
-        bg = Image.open(self.config.comic_options.background_file)
+        bg = Image.open(self.background_file)
 
         im = Image.new("RGB", (imgwidth, imgheight), (0xff, 0xff, 0xff, 0xff))
-        font = ImageFont.truetype(self.config.comic_options.font_file, self.config.comic_options.font_size)
+        font = ImageFont.truetype(self.font_file.as_posix(), self.config.comic_options.font_size)
 
         for i in range(len(panels)):
             pim = Image.new("RGB", (panelwidth, panelheight), (0xff, 0xff, 0xff, 0xff))
