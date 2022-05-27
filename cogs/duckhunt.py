@@ -862,8 +862,8 @@ class Duckhunt(commands.Cog):
             )
             return await self.ctx_send(ctx, out, source_delay=10)
 
-    @commands.command(aliases=["duckmerge"])
-    @checks.is_mod()
+    # @commands.command(aliases=["duckmerge"])
+    # @checks.is_mod()
     async def duck_merge(self, ctx, oldnick: Union[discord.Member, str], newnick: Union[discord.Member, str]):
         """<user1> <user2> - Moves the duck scores from one nick to another nick. Accepts two nicks as input the first will
         have their duck scores removed the second will have the first score added. Warning this cannot be undone.
