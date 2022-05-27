@@ -47,9 +47,9 @@ class Stats(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self.process = psutil.Process()
-        self._batch_lock = asyncio.Lock(loop=bot.loop)
+        self._batch_lock = asyncio.Lock()
         self._data_batch = []
-        self._gateway_queue = asyncio.Queue(loop=bot.loop)
+        self._gateway_queue = asyncio.Queue()
         self.gateway_worker.start()
 
     def cog_unload(self):
